@@ -1,0 +1,23 @@
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: Grant
+metadata:
+  name: splinter-research-grant
+  namespace: noctipede
+spec:
+  mariaDbRef:
+    name: mariadb
+  privileges:
+    - "SELECT"
+    - "INSERT"
+    - "UPDATE"
+    - "DELETE"
+    - "CREATE"
+    - "DROP"
+    - "INDEX"
+    - "ALTER"
+    - "CREATE TEMPORARY TABLES"
+    - "LOCK TABLES"
+  database: "splinter-research"
+  table: "*"
+  username: "splinter-research"
+  host: "%"

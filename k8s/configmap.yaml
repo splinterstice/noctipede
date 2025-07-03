@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: noctipede-config
+  namespace: noctipede
+data:
+  # Database Configuration
+  MARIADB_HOST: "mariadb"
+  MARIADB_PORT: "3306"
+  MARIADB_USER: "splinter-research"
+  MARIADB_DATABASE: "splinter-research"
+  
+  # MinIO Configuration
+  MINIO_ENDPOINT: "minio-crawler-hl.noctipede:9000"
+  MINIO_BUCKET_NAME: "noctipede-data"
+  MINIO_SECURE: "false"
+  
+  # AI/Ollama Configuration
+  OLLAMA_VISION_MODEL: "llama3.2-vision:11b"
+  OLLAMA_TEXT_MODEL: "gemma3:12b"
+  OLLAMA_MODERATION_MODEL: "llama3.1:8b"
+  
+  # Crawler Configuration
+  MAX_LINKS_PER_PAGE: "50"
+  MAX_QUEUE_SIZE: "500"
+  CRAWL_DELAY_SECONDS: "3"
+  SKIP_RECENT_CRAWLS: "true"
+  RECENT_CRAWL_HOURS: "24"
+  MAX_CONCURRENT_CRAWLERS: "10"
+  
+  # Network Configuration
+  TOR_PROXY_HOST: "127.0.0.1"
+  TOR_PROXY_PORT: "9050"
+  I2P_PROXY_HOST: "127.0.0.1"
+  I2P_PROXY_PORT: "4444"
+  I2P_INTERNAL_PROXIES: ""
+  
+  # Application Configuration
+  LOG_LEVEL: "INFO"
+  OUTPUT_DIR: "/app/output"
+  SITES_FILE_PATH: "/app/data/sites.txt"
+  WEB_SERVER_PORT: "8080"
+  WEB_SERVER_HOST: "0.0.0.0"
+  
+  # Content Analysis Configuration
+  CONTENT_ANALYSIS_ENABLED: "true"
+  IMAGE_ANALYSIS_ENABLED: "true"
+  MODERATION_THRESHOLD: "30"
+  MAX_IMAGE_SIZE_MB: "10"
+  SUPPORTED_IMAGE_FORMATS: "webp,jpg,jpeg,png,gif,bmp,tiff,svg"
+  
+  # Performance Configuration
+  DB_POOL_SIZE: "20"
+  DB_MAX_OVERFLOW: "30"
+  WORKER_THREADS: "4"
+  BATCH_SIZE: "100"

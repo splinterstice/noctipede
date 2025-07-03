@@ -1,0 +1,74 @@
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: MariaDB
+metadata:
+  name: mariadb
+  namespace: noctipede
+spec:
+  rootPasswordSecretKeyRef:
+    name: mariadb-secret
+    key: MARIA_ROOT_PASSWORD
+    generate: false
+
+  username: splinter-research
+  passwordSecretKeyRef:
+    name: mariadb-secret
+    key: MARIA_USER_PASSWORD
+    generate: false
+  database: splinter-research
+
+  image: mariadb:11.0
+  imagePullPolicy: IfNotPresent
+
+  port: 3306
+
+  storage:
+    size: 50Gi
+    storageClassName: longhorn
+
+  service:
+    type: ClusterIP
+
+  myCnf: |
+    [mariadb]
+    bind-address=*
+    default_storage_engine=InnoDB
+    binlog_format=row
+    innodb_autoinc_lock_mode=2
+    max_allowed_packet=256M
+    
+    # High-performance connection settings for crawler workload
+    max_connections=1000
+    max_user_connections=950
+    thread_cache_size=100
+    table_open_cache=4000
+    
+    # InnoDB optimizations for high concurrency
+    innodb_buffer_pool_size=2G
+    innodb_log_file_size=512M
+    innodb_log_buffer_size=64M
+    innodb_flush_log_at_trx_commit=2
+    innodb_thread_concurrency=0
+    innodb_read_io_threads=8
+    innodb_write_io_threads=8
+    
+    # Query cache and connection optimizations
+    query_cache_type=1
+    query_cache_size=128M
+    connect_timeout=60
+    wait_timeout=600
+    interactive_timeout=600
+    
+    # Temporary table optimizations
+    tmp_table_size=256M
+    max_heap_table_size=256M
+
+  metrics:
+    enabled: true
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi

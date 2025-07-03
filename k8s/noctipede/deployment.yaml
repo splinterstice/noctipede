@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noctipede-app
+  namespace: noctipede
+  labels:
+    app: noctipede-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noctipede-app
+  template:
+    metadata:
+      labels:
+        app: noctipede-app
+    spec:
+      containers:
+      - name: noctipede-app
+        image: noctipede:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: noctipede-config
+        - secretRef:
+            name: noctipede-secrets
+        volumeMounts:
+        - name: data-volume
+          mountPath: /app/data
+        - name: output-volume
+          mountPath: /app/output
+        - name: logs-volume
+          mountPath: /app/logs
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: noctipede-data-pvc
+      - name: output-volume
+        persistentVolumeClaim:
+          claimName: noctipede-output-pvc
+      - name: logs-volume
+        persistentVolumeClaim:
+          claimName: noctipede-logs-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noctipede-web
+  namespace: noctipede
+  labels:
+    app: noctipede-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noctipede-web
+  template:
+    metadata:
+      labels:
+        app: noctipede-web
+    spec:
+      containers:
+      - name: noctipede-web
+        image: noctipede:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+        command: ["python", "-m", "noctipede.api.main"]
+        envFrom:
+        - configMapRef:
+            name: noctipede-config
+        - secretRef:
+            name: noctipede-secrets
+        volumeMounts:
+        - name: output-volume
+          mountPath: /app/output
+        - name: logs-volume
+          mountPath: /app/logs
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: output-volume
+        persistentVolumeClaim:
+          claimName: noctipede-output-pvc
+      - name: logs-volume
+        persistentVolumeClaim:
+          claimName: noctipede-logs-pvc

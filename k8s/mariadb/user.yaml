@@ -1,0 +1,14 @@
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: User
+metadata:
+  name: splinter-research
+  namespace: noctipede
+spec:
+  mariaDbRef:
+    name: mariadb
+  name: splinter-research
+  passwordSecretKeyRef:
+    name: mariadb-secret
+    key: MARIA_USER_PASSWORD
+  maxUserConnections: 20
+  host: "%"

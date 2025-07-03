@@ -1,0 +1,14 @@
+# Example sites for Noctipede crawler
+# One URL per line, comments start with #
+
+# Clearnet examples
+http://example.com
+https://httpbin.org
+
+# Tor .onion examples (replace with actual .onion addresses)
+# http://3g2upl4pq6kufc4m.onion  # DuckDuckGo
+# http://facebookcorewwwi.onion  # Facebook
+
+# I2P .i2p examples (replace with actual .i2p addresses)  
+# http://stats.i2p
+# http://echelon.i2p
