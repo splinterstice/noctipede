@@ -29,7 +29,7 @@ class BaseCrawler(ABC):
         self.logger = get_logger(self.__class__.__name__)
         self.session = self._create_session()
         self.storage_manager = StorageManager()
-        self.db_session = get_db_session()
+        # Remove the shared db_session - we'll create one per operation instead
     
     def _create_session(self) -> requests.Session:
         """Create a requests session with retry strategy."""
@@ -60,19 +60,22 @@ class BaseCrawler(ABC):
     
     def crawl_site(self, url: str) -> bool:
         """Crawl a single site."""
+        # Create a new database session for this operation
+        db_session = get_db_session()
+        
         try:
             # Check if site was recently crawled
-            if self._should_skip_site(url):
+            if self._should_skip_site(url, db_session):
                 self.logger.info(f"Skipping recently crawled site: {url}")
                 return True
             
             # Get or create site record
-            site = self._get_or_create_site(url)
+            site = self._get_or_create_site(url, db_session)
             if not site:
                 return False
             
             # Crawl the site
-            success = self._crawl_site_pages(site)
+            success = self._crawl_site_pages(site, db_session)
             
             # Update site record
             site.last_crawled = datetime.utcnow()
@@ -83,38 +86,48 @@ class BaseCrawler(ABC):
             else:
                 site.error_count += 1
             
-            self.db_session.commit()
+            db_session.commit()
             return success
             
         except Exception as e:
             self.logger.error(f"Error crawling site {url}: {e}")
+            db_session.rollback()
+            return False
+        finally:
+            db_session.close()
             return False
     
-    def _should_skip_site(self, url: str) -> bool:
+    def _should_skip_site(self, url: str, db_session) -> bool:
         """Check if site should be skipped based on recent crawl."""
         if not self.settings.skip_recent_crawls:
             return False
         
-        site = self.db_session.query(Site).filter_by(url=url).first()
+        site = db_session.query(Site).filter_by(url=url).first()
         if not site or not site.last_crawled:
             return False
         
         time_threshold = datetime.utcnow() - timedelta(hours=self.settings.recent_crawl_hours)
         return site.last_crawled > time_threshold
     
-    def _get_or_create_site(self, url: str) -> Optional[Site]:
+    def _get_or_create_site(self, url: str, db_session) -> Optional[Site]:
         """Get existing site or create new one."""
         try:
-            site = self.db_session.query(Site).filter_by(url=url).first()
+            site = db_session.query(Site).filter_by(url=url).first()
             if not site:
+                # Determine network type and domain
+                network_type = get_network_type(url)
+                domain = extract_domain(url)
+                
                 site = Site(
                     url=url,
-                    is_onion='.onion' in url.lower(),
-                    is_i2p='.i2p' in url.lower(),
+                    domain=domain,
+                    network_type=network_type,
+                    is_onion=network_type == 'tor',  # Backward compatibility
+                    is_i2p=network_type == 'i2p',   # Backward compatibility
                     created_at=datetime.utcnow()
                 )
-                self.db_session.add(site)
-                self.db_session.commit()
+                db_session.add(site)
+                db_session.commit()
             
             return site
             
@@ -122,7 +135,7 @@ class BaseCrawler(ABC):
             self.logger.error(f"Error getting/creating site {url}: {e}")
             return None
     
-    def _crawl_site_pages(self, site: Site) -> bool:
+    def _crawl_site_pages(self, site: Site, db_session) -> bool:
         """Crawl pages for a site."""
         try:
             # Start with the main page
@@ -136,7 +149,7 @@ class BaseCrawler(ABC):
                     continue
                 
                 # Crawl the page
-                page_data = self._crawl_page(current_url, site.id)
+                page_data = self._crawl_page(current_url, site.id, db_session)
                 if page_data:
                     crawled_pages.add(current_url)
                     
@@ -155,7 +168,7 @@ class BaseCrawler(ABC):
             self.logger.error(f"Error crawling site pages for {site.url}: {e}")
             return False
     
-    def _crawl_page(self, url: str, site_id: int) -> Optional[Dict[str, Any]]:
+    def _crawl_page(self, url: str, site_id: int, db_session) -> Optional[Dict[str, Any]]:
         """Crawl a single page."""
         try:
             start_time = time.time()
@@ -177,7 +190,7 @@ class BaseCrawler(ABC):
             content_hash = hashlib.sha256(content.encode('utf-8')).hexdigest()
             
             # Check if page already exists with same content
-            existing_page = self.db_session.query(Page).filter_by(
+            existing_page = db_session.query(Page).filter_by(
                 url=url, content_hash=content_hash
             ).first()
             
@@ -206,11 +219,17 @@ class BaseCrawler(ABC):
                 response_time=response_time
             )
             
-            self.db_session.add(page)
-            self.db_session.commit()
+            db_session.add(page)
+            
+            # Update site page count
+            site = db_session.query(Site).filter_by(id=site_id).first()
+            if site:
+                site.page_count = (site.page_count or 0) + 1
+            
+            db_session.commit()
             
             # Extract and store media files
-            media_files = self._extract_media_files(soup, url, page.id)
+            media_files = self._extract_media_files(soup, url, page.id, db_session)
             
             # Extract links
             links = self._extract_links(soup, url)
@@ -241,7 +260,7 @@ class BaseCrawler(ABC):
         
         return list(set(links))  # Remove duplicates
     
-    def _extract_media_files(self, soup: BeautifulSoup, base_url: str, page_id: int) -> List[MediaFile]:
+    def _extract_media_files(self, soup: BeautifulSoup, base_url: str, page_id: int, db_session) -> List[MediaFile]:
         """Extract and store media files from page."""
         media_files = []
         
@@ -251,7 +270,7 @@ class BaseCrawler(ABC):
             full_url = urljoin(base_url, src)
             
             if is_valid_url(full_url):
-                media_file = self._download_and_store_media(full_url, 'image', page_id)
+                media_file = self._download_and_store_media(full_url, 'image', page_id, db_session)
                 if media_file:
                     media_files.append(media_file)
         
@@ -270,17 +289,17 @@ class BaseCrawler(ABC):
                 full_url = urljoin(base_url, src)
                 
                 if is_valid_url(full_url):
-                    media_file = self._download_and_store_media(full_url, tag, page_id)
+                    media_file = self._download_and_store_media(full_url, tag, page_id, db_session)
                     if media_file:
                         media_files.append(media_file)
         
         return media_files
     
-    def _download_and_store_media(self, url: str, file_type: str, page_id: int) -> Optional[MediaFile]:
+    def _download_and_store_media(self, url: str, file_type: str, page_id: int, db_session) -> Optional[MediaFile]:
         """Download and store a media file with enhanced WebP and dark web format support."""
         try:
             # Check if media file already exists
-            existing_media = self.db_session.query(MediaFile).filter_by(url=url).first()
+            existing_media = db_session.query(MediaFile).filter_by(url=url).first()
             if existing_media:
                 return existing_media
             
@@ -345,8 +364,8 @@ class BaseCrawler(ABC):
                 minio_object_name=storage_result['object_name']
             )
             
-            self.db_session.add(media_file)
-            self.db_session.commit()
+            db_session.add(media_file)
+            db_session.commit()
             
             self.logger.debug(f"Downloaded and stored media: {url}")
             return media_file
@@ -363,5 +382,4 @@ class BaseCrawler(ABC):
         """Clean up resources."""
         if self.session:
             self.session.close()
-        if self.db_session:
-            self.db_session.close()
+        # db_session is now created per-operation, so no cleanup needed here

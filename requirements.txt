@@ -2,6 +2,7 @@
 fastapi>=0.103.1
 uvicorn>=0.23.2
 pydantic>=1.10.0
+pydantic-settings>=2.0.0
 
 # Database
 sqlalchemy>=2.0.20
@@ -20,6 +21,9 @@ PySocks>=1.7.1
 
 # Image processing (with WebP support)
 Pillow>=10.0.0
+
+# System monitoring
+psutil>=5.9.0
 
 # Utilities
 python-dotenv>=1.0.0

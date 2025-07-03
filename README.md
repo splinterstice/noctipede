@@ -24,7 +24,7 @@ Noctipede is a comprehensive solution for accessing, storing, and analyzing cont
 - `database/` - Database models and connection management
 - `storage/` - MinIO object storage integration
 - `analysis/` - AI analysis and content moderation
-- `api/` - Web API and interfaces
+- `portal/` - Web portal for live metrics and monitoring
 - `config/` - Configuration management
 
 ## Prerequisites
@@ -127,7 +127,7 @@ docker-compose up -d
 - **noctipede-app**: Main application container
 - **mariadb**: Database server
 - **minio**: Object storage server
-- **noctipede-web**: Web interface
+- **noctipede-portal**: Web dashboard for live metrics
 
 ### 2. Kubernetes Deployment
 
@@ -146,6 +146,48 @@ kubectl apply -f k8s/mariadb/
 kubectl apply -f k8s/minio/
 kubectl apply -f k8s/noctipede/
 ```
+
+### 3. GitHub Container Registry Deployment
+
+The project supports automated building and publishing of Docker images to GitHub Container Registry (GHCR) for easy distribution and deployment.
+
+#### Prerequisites
+- GitHub Personal Access Token with `write:packages` scope
+- Docker installed locally
+- Access to the GitHub repository
+
+#### Manual Build and Push
+```bash
+# Show repository and image information
+make ghcr-info
+
+# Login to GitHub Container Registry
+make ghcr-login
+
+# Build, tag, and push image to GHCR
+make ghcr-deploy
+```
+
+#### Using Pre-built Images
+```bash
+# Pull the latest image
+docker pull ghcr.io/splinterstice/noctipede:latest
+
+# Run with Docker Compose using GHCR image
+make run-ghcr
+
+# Deploy to Kubernetes using GHCR image
+make k8s-deploy-ghcr
+```
+
+#### Automated CI/CD
+The repository includes a GitHub Actions workflow that automatically:
+- Builds Docker images on push to main/develop branches
+- Tags images with version numbers for releases
+- Publishes to GitHub Container Registry
+- Provides deployment summaries
+
+Images are available at: `ghcr.io/splinterstice/noctipede`
 
 ## Usage
 
@@ -167,9 +209,17 @@ docker exec -it noctipede-app python -m noctipede.analysis.image_analyzer
 docker exec -it noctipede-app python -m noctipede.analysis.content_moderator --threshold 30
 ```
 
-### Web Interface
+### Web Portal
 - Docker: http://localhost:8080
 - Kubernetes: Use Service IP or configured Ingress
+
+The web portal provides live metrics and monitoring including:
+- Real-time crawler statistics
+- Network type breakdown (clearnet, tor, i2p)
+- Site status monitoring
+- Recent crawl activity
+- Top domains by page count
+- System health indicators
 
 ## Sites Configuration
 

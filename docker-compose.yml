@@ -86,6 +86,10 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      tor-proxy:
+        condition: service_healthy
+      i2p-proxy:
+        condition: service_started  # I2P takes longer to be healthy
     environment:
       # Database
       MARIADB_HOST: mariadb
@@ -118,19 +122,19 @@ services:
       CRAWL_DELAY_SECONDS: ${CRAWL_DELAY_SECONDS:-3}
       MAX_CONCURRENT_CRAWLERS: ${MAX_CONCURRENT_CRAWLERS:-10}
       
-      # Network settings
-      TOR_PROXY_HOST: ${TOR_PROXY_HOST:-127.0.0.1}
-      TOR_PROXY_PORT: ${TOR_PROXY_PORT:-9050}
-      I2P_PROXY_HOST: ${I2P_PROXY_HOST:-127.0.0.1}
-      I2P_PROXY_PORT: ${I2P_PROXY_PORT:-4444}
+      # Proxy Configuration
+      TOR_PROXY_HOST: tor-proxy
+      TOR_PROXY_PORT: 9050
+      I2P_PROXY_HOST: i2p-proxy
+      I2P_PROXY_PORT: 4444
     volumes:
       - ./data:/app/data
       - ./output:/app/output
       - ./logs:/app/logs
-    command: ["python", "-m", "noctipede.crawlers.main"]
+    command: ["sh", "-c", "cd /app && PYTHONPATH=/app python -m crawlers.main"]
 
-  # Noctipede Web Interface
-  noctipede-web:
+  # Noctipede Web Portal
+  noctipede-portal:
     build:
       context: .
       dockerfile: docker/Dockerfile
@@ -140,6 +144,10 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      tor-proxy:
+        condition: service_healthy
+      i2p-proxy:
+        condition: service_started  # Changed from service_healthy to service_started
     environment:
       # Database
       MARIADB_HOST: mariadb
@@ -155,6 +163,12 @@ services:
       MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME:-noctipede-data}
       MINIO_SECURE: "false"
       
+      # Proxy Configuration
+      TOR_PROXY_HOST: tor-proxy
+      TOR_PROXY_PORT: 9050
+      I2P_PROXY_HOST: i2p-proxy
+      I2P_PROXY_PORT: 4444
+      
       # Web server
       WEB_SERVER_HOST: 0.0.0.0
       WEB_SERVER_PORT: 8080
@@ -163,12 +177,56 @@ services:
     volumes:
       - ./output:/app/output
       - ./logs:/app/logs
-    command: ["python", "-m", "noctipede.api.main"]
+    command: ["sh", "-c", "cd /app && PYTHONPATH=/app python -m portal.main"]
+
+  # Tor Proxy Service
+  tor-proxy:
+    image: dperson/torproxy:latest
+    restart: unless-stopped
+    ports:
+      - "9050:9050"  # SOCKS proxy port
+    environment:
+      - TOR_NewCircuitPeriod=30
+      - TOR_MaxCircuitDirtiness=600
+      - TOR_CircuitBuildTimeout=10
+    volumes:
+      - tor_data:/var/lib/tor
+    healthcheck:
+      test: ["CMD", "curl", "--proxy", "socks5h://localhost:9050", "--max-time", "10", "-s", "https://check.torproject.org/api/ip"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
+
+  # I2P Proxy Service  
+  i2p-proxy:
+    image: geti2p/i2p:latest
+    restart: unless-stopped
+    ports:
+      - "4444:4444"  # HTTP proxy port
+      - "7070:7070"  # Web console port
+      - "7656:7656"  # SAM interface port
+    environment:
+      - JVM_XMX=512m
+      - ENABLE_HTTPS_PROXY=true
+      - ENABLE_SAM=true
+    volumes:
+      - i2p_data:/i2p/.i2p
+    healthcheck:
+      test: ["CMD", "curl", "-f", "--max-time", "5", "http://localhost:7070/"]
+      interval: 120s  # Check less frequently
+      timeout: 15s    # Longer timeout
+      retries: 5      # More retries
+      start_period: 600s  # I2P takes much longer to bootstrap
 
 volumes:
   mariadb_data:
     driver: local
   minio_data:
+    driver: local
+  tor_data:
+    driver: local
+  i2p_data:
     driver: local
 
 networks:

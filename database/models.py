@@ -15,12 +15,15 @@ class Site(Base):
 
     id = Column(Integer, primary_key=True)
     url = Column(String(255), unique=True, nullable=False)
-    is_onion = Column(Boolean, default=False)
-    is_i2p = Column(Boolean, default=False)
+    domain = Column(String(255), nullable=True)  # Extracted domain
+    network_type = Column(String(20), nullable=False, default='clearnet')  # clearnet, tor, i2p
+    is_onion = Column(Boolean, default=False)  # Backward compatibility
+    is_i2p = Column(Boolean, default=False)    # Backward compatibility
     last_crawled = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     status = Column(String(50), default='active')  # active, inactive, blocked
     crawl_count = Column(Integer, default=0)
+    page_count = Column(Integer, default=0)  # Number of pages crawled
     error_count = Column(Integer, default=0)
     last_error = Column(Text, nullable=True)
     
@@ -30,6 +33,8 @@ class Site(Base):
     # Indexes
     __table_args__ = (
         Index('idx_site_url', 'url'),
+        Index('idx_site_domain', 'domain'),
+        Index('idx_site_network_type', 'network_type'),
         Index('idx_site_last_crawled', 'last_crawled'),
         Index('idx_site_status', 'status'),
     )

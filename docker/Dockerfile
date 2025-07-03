@@ -46,11 +46,16 @@ RUN python -c "from PIL import Image; print('WebP support:', 'WEBP' in Image.EXT
 # Copy application code
 COPY . .
 
-# Create a non-root user
+# Create a non-root user first
 RUN useradd -m -u 1000 noctipede && \
-    chown -R noctipede:noctipede /app
+    chown -R noctipede:noctipede /app && \
+    chmod -R 755 /app/logs /app/output /app/data
 
+# Switch to non-root user
 USER noctipede
+
+# Install the package in development mode as the non-root user
+RUN pip install --user -e .
 
 # Expose port
 EXPOSE 8080
