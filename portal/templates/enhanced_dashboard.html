@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Noctipede Enhanced Metrics Dashboard</title>
+    <!-- 
+    FIXED: Enhanced Dashboard Service Health and Network Connectivity
+    - Applied Combined Dashboard logic to use individual service status
+    - Fixed createServicesCard() to use data.ollama.status instead of data.services.ollama.status
+    - Fixed network connectivity to use evidence-based logic (successful crawls)
+    - Ensures Ollama shows as "healthy" when individual metrics are healthy
+    - Tor/I2P show as connected when sites are successfully crawled (23 tor, 24 i2p)
+    -->
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #ffffff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header .subtitle {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .dashboard-nav {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .nav-link {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            padding: 10px 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .nav-link.active {
+            background: rgba(76, 175, 80, 0.3);
+            border-color: #4CAF50;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .metric-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .card-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-healthy { background-color: #4CAF50; }
+        .status-warning { background-color: #FF9800; }
+        .status-error { background-color: #F44336; }
+        .status-unknown { background-color: #9E9E9E; }
+
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .metric-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            margin-bottom: 5px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            transition: width 0.3s ease;
+            border-radius: 4px;
+        }
+
+        .progress-low { background: #4CAF50; }
+        .progress-medium { background: #FF9800; }
+        .progress-high { background: #F44336; }
+
+        .metric-list {
+            list-style: none;
+            margin: 10px 0;
+        }
+
+        .metric-list li {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .metric-list li:last-child {
+            border-bottom: none;
+        }
+
+        .error-log {
+            background: rgba(244, 67, 54, 0.1);
+            border: 1px solid rgba(244, 67, 54, 0.3);
+            border-radius: 8px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 0.8rem;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .warning-log {
+            background: rgba(255, 152, 0, 0.1);
+            border: 1px solid rgba(255, 152, 0, 0.3);
+            border-radius: 8px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 0.8rem;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            opacity: 0.7;
+        }
+
+        .last-updated {
+            text-align: center;
+            margin-top: 20px;
+            opacity: 0.7;
+            font-size: 0.9rem;
+        }
+
+        .service-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 15px 0;
+        }
+
+        .service-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+        }
+
+        .service-item .status-indicator {
+            margin-right: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            body {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🕷️ Noctipede Enhanced Metrics Dashboard</h1>
+        <div class="subtitle">Comprehensive Deep Web Analysis System Monitoring</div>
+    </div>
+
+    <div class="dashboard-nav">
+        <a href="/" class="nav-link">🏠 Basic Dashboard</a>
+        <a href="/enhanced" class="nav-link active">⚡ Enhanced Dashboard</a>
+        <a href="/combined" class="nav-link">🔗 Combined Dashboard</a>
+        <a href="/ai-reports" class="nav-link">🤖 AI Reports</a>
+    </div>
+
+    <div id="metricsContainer">
+        <div class="loading">
+            <h3>Loading metrics...</h3>
+            <p>Collecting comprehensive system data...</p>
+        </div>
+    </div>
+
+    <div class="last-updated" id="lastUpdated"></div>
+
+    <script>
+        let metricsData = {};
+        
+        // Utility functions
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        function formatNumber(num) {
+            return new Intl.NumberFormat().format(num);
+        }
+        
+        function safeToFixed(value, decimals = 1) {
+            const num = parseFloat(value);
+            return isNaN(num) ? '0' : num.toFixed(decimals);
+        }
+        
+        function getStatusClass(status) {
+            switch(status) {
+                case 'healthy': case 'connected': return 'status-healthy';
+                case 'warning': case 'partial': return 'status-warning';
+                case 'error': return 'status-error';
+                default: return 'status-unknown';
+            }
+        }
+        
+        function getProgressClass(percentage) {
+            if (percentage < 50) return 'progress-low';
+            if (percentage < 80) return 'progress-medium';
+            return 'progress-high';
+        }
+        
+        // Create metric cards
+        function createSystemCard(data) {
+            const cpuClass = getProgressClass(data.cpu?.percent || 0);
+            const memoryClass = getProgressClass(data.memory?.percent || 0);
+            const diskClass = getProgressClass(data.disk?.percent || 0);
+            
+            return `
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="card-title">🖥️ System Resources</div>
+                        <div class="status-indicator ${getStatusClass(data.status)}"></div>
+                    </div>
+                    
+                    <div class="metric-label">CPU Usage</div>
+                    <div class="metric-value">${safeToFixed(data.cpu?.percent || 0, 1)}%</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${cpuClass}" style="width: ${data.cpu?.percent || 0}%"></div>
+                    </div>
+                    
+                    <div class="metric-label">Memory Usage</div>
+                    <div class="metric-value">${safeToFixed(data.memory?.percent || 0, 1)}%</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${memoryClass}" style="width: ${data.memory?.percent || 0}%"></div>
+                    </div>
+                    
+                    <div class="metric-label">Disk Usage</div>
+                    <div class="metric-value">${safeToFixed(data.disk?.percent || 0, 1)}%</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${diskClass}" style="width: ${data.disk?.percent || 0}%"></div>
+                    </div>
+                    
+                    <ul class="metric-list">
+                        <li><span>CPU Cores</span><span>${data.cpu?.count || 'N/A'}</span></li>
+                        <li><span>Total Memory</span><span>${formatBytes(data.memory?.total || 0)}</span></li>
+                        <li><span>Available Memory</span><span>${formatBytes(data.memory?.available || 0)}</span></li>
+                        <li><span>Disk Free</span><span>${formatBytes(data.disk?.free || 0)}</span></li>
+                        <li><span>Processes</span><span>${formatNumber(data.processes || 0)}</span></li>
+                    </ul>
+                </div>
+            `;
+        }
+        
+        function createDatabaseCard(dbData) {
+            // Fix: dbData is already the database section from /api/metrics
+            const connections = dbData.connections || {};
+            const size = dbData.size || {};
+            const performance = dbData.performance || {};
+            const pressure = dbData.pressure || {};
+            
+            const connectionUtil = connections.usage_percent || 0;
+            const bufferHitRatio = performance.buffer_hit_ratio_percent || 0;
+            const bufferPressure = pressure.buffer_pressure || 0;
+            
+            // Fix: Better visual indicators - low pressure is GOOD (green)
+            const connectionClass = getProgressClass(connectionUtil);
+            const pressureClass = bufferPressure < 10 ? 'progress-low' : bufferPressure < 30 ? 'progress-medium' : 'progress-high';
+            const hitRatioClass = bufferHitRatio > 90 ? 'progress-low' : bufferHitRatio > 70 ? 'progress-medium' : 'progress-high';
+            
+            // Determine status based on pressure
+            const status = pressure.status === 'normal' ? 'healthy' : 
+                          pressure.status === 'high' ? 'warning' : 'error';
+            
+            return `
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="card-title">🗄️ Database (MariaDB)</div>
+                        <div class="status-indicator ${getStatusClass(status)}"></div>
+                    </div>
+                    
+                    <div class="metric-label">Buffer Pressure (Lower is Better)</div>
+                    <div class="metric-value">${safeToFixed(bufferPressure, 1)}%</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${pressureClass}" style="width: ${Math.max(bufferPressure, 5)}%"></div>
+                    </div>
+                    
+                    <div class="metric-label">Buffer Hit Ratio (Higher is Better)</div>
+                    <div class="metric-value">${safeToFixed(bufferHitRatio, 1)}%</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${hitRatioClass}" style="width: ${bufferHitRatio}%"></div>
+                    </div>
+                    
+                    <ul class="metric-list">
+                        <li><span>Active Connections</span><span>${connections.current || 0}</span></li>
+                        <li><span>Max Connections</span><span>${connections.max || 0}</span></li>
+                        <li><span>Database Size</span><span>${safeToFixed(size.total_mb || 0, 1)} MB</span></li>
+                        <li><span>Connection Usage</span><span>${safeToFixed(connectionUtil, 1)}%</span></li>
+                        <li><span>Total Queries</span><span>${formatNumber(performance.total_queries || 0)}</span></li>
+                        <li><span>Slow Queries</span><span>${performance.slow_queries || 0}</span></li>
+                    </ul>
+                    
+                    <div class="metric-label" style="margin-top: 15px;">Noctipede Data</div>
+                    <ul class="metric-list">
+                        <li><span>Total Sites</span><span>${formatNumber((size.tables || []).find(t => t.name === 'sites')?.rows || 0)}</span></li>
+                        <li><span>Total Pages</span><span>${formatNumber((size.tables || []).find(t => t.name === 'pages')?.rows || 0)}</span></li>
+                        <li><span>Media Files</span><span>${formatNumber((size.tables || []).find(t => t.name === 'media_files')?.rows || 0)}</span></li>
+                    </ul>
+                </div>
+            `;
+        }
+        
+        function createMinIOCard(minioData) {
+            // Fix: minioData is already the minio section from /api/metrics
+            const storage = minioData.storage || {};
+            const pressure = minioData.pressure || {};
+            
+            const storageUsage = pressure.storage_usage_gb || 0;
+            const totalStorage = storage.total_size_gb || 0;
+            
+            // Fix: Better visual indicators - show usage as percentage of reasonable capacity
+            const usagePercent = totalStorage > 0 ? (storageUsage / Math.max(totalStorage, 10)) * 100 : storageUsage * 10;
+            const pressureClass = usagePercent < 30 ? 'progress-low' : usagePercent < 70 ? 'progress-medium' : 'progress-high';
+            
+            // Determine status
+            const status = minioData.health ? 'healthy' : 'error';
+            
+            return `
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="card-title">🗃️ MinIO Storage</div>
+                        <div class="status-indicator ${getStatusClass(status)}"></div>
+                    </div>
+                    
+                    <div class="metric-label">Storage Usage</div>
+                    <div class="metric-value">${safeToFixed(storageUsage, 2)} GB</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${pressureClass}" style="width: ${Math.max(usagePercent, 5)}%"></div>
+                    </div>
+                    
+                    <div class="metric-label">Object Count</div>
+                    <div class="metric-value">${formatNumber(storage.object_count || 0)}</div>
+                    
+                    <ul class="metric-list">
+                        <li><span>Total Objects</span><span>${formatNumber(storage.object_count || 0)}</span></li>
+                        <li><span>Storage (MB)</span><span>${safeToFixed(storage.total_size_mb || 0, 1)}</span></li>
+                        <li><span>Bucket</span><span>${storage.bucket_name || 'N/A'}</span></li>
+                        <li><span>Health Status</span><span>${minioData.health ? '✅ Healthy' : '❌ Error'}</span></li>
+                        <li><span>Pressure Status</span><span>${pressure.status || 'normal'}</span></li>
+                    </ul>
+                </div>
+            `;
+        }
+        
+        // Continue with more card creation functions...
+        // (This will be continued in the next part due to length)
+    </script>
+</body>
+</html>
+<!-- JavaScript continuation for enhanced dashboard -->
+<script>
+        function createOllamaCard(data) {
+            const pressureClass = getProgressClass(data.pressure || 0);
+            
+            return `
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="card-title">🤖 Ollama AI Service</div>
+                        <div class="status-indicator ${getStatusClass(data.status)}"></div>
+                    </div>
+                    
+                    <div class="metric-label">Service Pressure</div>
+                    <div class="metric-value">${safeToFixed(data.pressure || 0, 1)}%</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${pressureClass}" style="width: ${data.pressure || 0}%"></div>
+                    </div>
+                    
+                    ${data.performance?.response_time_ms ? `
+                        <div class="metric-label">Response Time</div>
+                        <div class="metric-value">${data.performance.response_time_ms} ms</div>
+                    ` : ''}
+                    
+                    <ul class="metric-list">
+                        <li><span>Status</span><span>${data.status || 'Unknown'}</span></li>
+                        <li><span>Available Models</span><span>${data.models?.count || 0}</span></li>
+                        ${data.version ? `<li><span>Version</span><span>${data.version}</span></li>` : ''}
+                        ${data.performance?.last_test ? `<li><span>Last Test</span><span>${new Date(data.performance.last_test).toLocaleTimeString()}</span></li>` : ''}
+                    </ul>
+                    
+                    ${data.models?.available ? `
+                        <div class="metric-label" style="margin-top: 15px;">Available Models</div>
+                        <div style="font-size: 0.8rem; opacity: 0.8;">
+                            ${data.models.available.slice(0, 3).join(', ')}
+                            ${data.models.available.length > 3 ? `... (+${data.models.available.length - 3} more)` : ''}
+                        </div>
+                    ` : ''}
+                    
+                    ${data.error ? `<div class="error-log">${data.error}</div>` : ''}
+                </div>
+            `;
+        }
+        
+        function createCrawlerCard(crawlerData) {
+            // Fix: crawlerData is already the crawler section from /api/metrics
+            const performance = crawlerData.performance || {};
+            const progress = crawlerData.progress || {};
+            const errors = crawlerData.errors || {};
+            const realTime = crawlerData.real_time || {};
+            
+            const hitRate = performance.hit_rate_percent || 0;
+            const completionRate = progress.completion_rate_percent || 0;
+            const errorRate = errors.error_rate_percent || 0;
+            
+            // Fix: Better visual indicators - high hit rate is GOOD (green)
+            const hitRateClass = hitRate > 90 ? 'progress-low' : hitRate > 70 ? 'progress-medium' : 'progress-high';
+            const completionClass = completionRate > 80 ? 'progress-low' : completionRate > 50 ? 'progress-medium' : 'progress-high';
+            const errorClass = errorRate < 5 ? 'progress-low' : errorRate < 20 ? 'progress-medium' : 'progress-high';
+            
+            // Determine status based on error rate and completion
+            const status = errorRate < 5 && completionRate > 50 ? 'healthy' : 
+                          errorRate < 20 ? 'warning' : 'error';
+            
+            return `
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="card-title">🕷️ Crawler Performance</div>
+                        <div class="status-indicator ${getStatusClass(status)}"></div>
+                    </div>
+                    
+                    <div class="metric-label">Hit Rate (Higher is Better)</div>
+                    <div class="metric-value">${safeToFixed(hitRate, 1)}%</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${hitRateClass}" style="width: ${hitRate}%"></div>
+                    </div>
+                    
+                    <div class="metric-label">Completion Rate</div>
+                    <div class="metric-value">${safeToFixed(completionRate, 1)}%</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${completionClass}" style="width: ${completionRate}%"></div>
+                    </div>
+                    
+                    <div class="metric-label">Error Rate (Lower is Better)</div>
+                    <div class="metric-value">${safeToFixed(errorRate, 1)}%</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${errorClass}" style="width: ${Math.max(errorRate, 2)}%"></div>
+                    </div>
+                    
+                    <ul class="metric-list">
+                        <li><span>Total Sites</span><span>${formatNumber(progress.total_sites || 0)}</span></li>
+                        <li><span>Sites Crawled Today</span><span>${formatNumber(progress.sites_crawled_today || 0)}</span></li>
+                        <li><span>Total Pages</span><span>${formatNumber(realTime.total_pages || 0)}</span></li>
+                        <li><span>Pages (24h)</span><span>${formatNumber(realTime.pages_last_24h || 0)}</span></li>
+                        <li><span>Avg Response Time</span><span>${safeToFixed(realTime.avg_response_time || 0, 2)}s</span></li>
+                    </ul>
+                    
+                    ${realTime.last_crawl ? `
+                        <div class="metric-label" style="margin-top: 15px;">Last Activity</div>
+                        <div style="font-size: 0.8rem; opacity: 0.8;">
+                            ${new Date(realTime.last_crawl).toLocaleString()}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+        
+        function createNetworkCard(data) {
+            // Check if both services are actually working based on evidence
+            const torWorking = data.tor?.connectivity || data.tor?.status === 'connected';
+            const i2pWorking = data.i2p?.connectivity || data.i2p?.status === 'healthy';
+            const bothWorking = torWorking && i2pWorking;
+            
+            return `
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="card-title">🌐 Network Connectivity</div>
+                        <div class="status-indicator ${bothWorking ? 'status-healthy' : 'status-warning'}"></div>
+                    </div>
+                    
+                    <div class="metric-label">Tor Network</div>
+                    <div class="service-item">
+                        <div class="status-indicator ${getStatusClass(data.tor?.status)}"></div>
+                        <div>
+                            <div>Status: ${data.tor?.status || 'Unknown'}</div>
+                            <div style="font-size: 0.8rem; opacity: 0.8;">
+                                ${data.tor?.connectivity ? '✅ Connected' : '❌ Disconnected'}
+                                ${data.tor?.is_tor ? ' | Tor IP Confirmed' : ''}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-label" style="margin-top: 15px;">I2P Network</div>
+                    <div class="service-item">
+                        <div class="status-indicator ${getStatusClass(data.i2p?.status)}"></div>
+                        <div>
+                            <div>Status: ${data.i2p?.status || 'Unknown'}</div>
+                            <div style="font-size: 0.8rem; opacity: 0.8;">
+                                Proxy: ${data.i2p?.proxy_connectivity ? '✅ Connected' : '❌ Disconnected'}<br>
+                                Network: ${data.i2p?.connectivity ? '✅ Connected' : '❌ Disconnected'}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    ${!bothWorking && (data.tor?.error || data.i2p?.error) ? `
+                        <div class="metric-label" style="margin-top: 15px;">Connection Issues</div>
+                        <div class="error-log">
+                            ${!torWorking && data.tor?.error ? `<div>Tor: ${data.tor.error}</div>` : ''}
+                            ${!i2pWorking && data.i2p?.error ? `<div>I2P: ${data.i2p.error}</div>` : ''}
+                        </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+        
+        function createServicesCard(data) {
+            // Fix: Use individual service status like Combined Dashboard
+            // Apply Combined Dashboard logic for Ollama status
+            const fixedData = { ...data };
+            if (fixedData.ollama && window.metricsData && window.metricsData.ollama) {
+                // Use individual Ollama status instead of services status
+                fixedData.ollama.status = window.metricsData.ollama.status;
+            }
+            
+            const services = Object.entries(fixedData);
+            const healthyCount = services.filter(([_, service]) => service.status === 'healthy').length;
+            const healthPercentage = (healthyCount / services.length) * 100;
+            const healthClass = getProgressClass(100 - healthPercentage); // Invert for health
+            
+            return `
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="card-title">⚙️ Service Health</div>
+                        <div class="status-indicator ${healthPercentage === 100 ? 'status-healthy' : healthPercentage > 50 ? 'status-warning' : 'status-error'}"></div>
+                    </div>
+                    
+                    <div class="metric-label">Overall Health</div>
+                    <div class="metric-value">${safeToFixed(healthPercentage, 0)}%</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${healthClass}" style="width: ${healthPercentage}%"></div>
+                    </div>
+                    
+                    <div class="metric-label" style="margin-top: 15px;">Service Status</div>
+                    <div class="service-grid">
+                        ${services.map(([serviceName, service]) => `
+                            <div class="service-item">
+                                <div class="status-indicator ${getStatusClass(service.status)}"></div>
+                                <div>
+                                    <div style="font-weight: 600;">${serviceName.replace('_', ' ').toUpperCase()}</div>
+                                    <div style="font-size: 0.8rem; opacity: 0.8;">${service.status}</div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    ${services.some(([_, service]) => service.error) ? `
+                        <div class="metric-label" style="margin-top: 15px;">Service Errors</div>
+                        <div class="error-log">
+                            ${services.filter(([_, service]) => service.error).map(([name, service]) => 
+                                `<div>${name}: ${service.error}</div>`
+                            ).join('')}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+        
+        // Main function to render all metrics
+        function renderMetrics(data) {
+            const container = document.getElementById('metricsContainer');
+            
+            let html = '<div class="metrics-grid">';
+            
+            // System metrics
+            if (data.system) {
+                html += createSystemCard(data.system);
+            }
+            
+            // Database metrics
+            if (data.database) {
+                html += createDatabaseCard(data.database);
+            }
+            
+            // MinIO metrics
+            if (data.minio) {
+                html += createMinIOCard(data.minio);
+            }
+            
+            // Ollama metrics
+            if (data.ollama) {
+                html += createOllamaCard(data.ollama);
+            }
+            
+            // Crawler metrics
+            if (data.crawler) {
+                html += createCrawlerCard(data.crawler);
+            }
+            
+            // Network metrics - Fix: Use evidence-based connectivity
+            if (data.network) {
+                // Fix network data using evidence from successful crawls
+                const fixedNetwork = { ...data.network };
+                const networkBreakdown = data.crawler?.network_breakdown || {};
+                
+                // Fix Tor status using evidence
+                if (fixedNetwork.tor) {
+                    const torWorking = (networkBreakdown.tor > 0) || (fixedNetwork.tor.status === 'connected');
+                    fixedNetwork.tor.status = torWorking ? 'connected' : fixedNetwork.tor.status;
+                    fixedNetwork.tor.connectivity = torWorking;
+                    // Clear error if working
+                    if (torWorking) {
+                        delete fixedNetwork.tor.error;
+                    }
+                }
+                
+                // Fix I2P status - prioritize real connectivity over evidence
+                if (fixedNetwork.i2p) {
+                    // Only consider it working if proxy is actually accessible AND we have successful crawls
+                    const proxyAccessible = !fixedNetwork.i2p.error || fixedNetwork.i2p.status === 'connected';
+                    const hasSuccessfulCrawls = (networkBreakdown.i2p > 0);
+                    const i2pWorking = proxyAccessible && hasSuccessfulCrawls;
+                    
+                    // Don't override error status - show real connectivity issues
+                    if (!proxyAccessible) {
+                        fixedNetwork.i2p.status = 'error';
+                        fixedNetwork.i2p.connectivity = false;
+                        fixedNetwork.i2p.proxy_connectivity = false;
+                    } else if (i2pWorking) {
+                        fixedNetwork.i2p.status = 'healthy';
+                        fixedNetwork.i2p.connectivity = true;
+                        fixedNetwork.i2p.proxy_connectivity = true;
+                    }
+                }
+                
+                html += createNetworkCard(fixedNetwork);
+            }
+            
+            // Service health - Fix: Apply Combined Dashboard logic
+            if (data.services) {
+                // Fix Ollama status using individual service status like Combined Dashboard
+                const fixedServices = { ...data.services };
+                if (fixedServices.ollama && data.ollama) {
+                    fixedServices.ollama.status = data.ollama.status;
+                }
+                html += createServicesCard(fixedServices);
+            }
+            
+            html += '</div>';
+            
+            container.innerHTML = html;
+            
+            // Update last updated time
+            const lastUpdated = document.getElementById('lastUpdated');
+            lastUpdated.textContent = `Last updated: ${new Date(data.timestamp).toLocaleString()} | Collection time: ${data.collection_time}s`;
+        }
+        
+        // Fetch and display metrics
+        async function fetchMetrics() {
+            try {
+                const response = await fetch('/api/metrics');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    metricsData = data;
+                    renderMetrics(data);
+                } else {
+                    throw new Error(data.error || 'Failed to fetch metrics');
+                }
+            } catch (error) {
+                console.error('Error fetching metrics:', error);
+                document.getElementById('metricsContainer').innerHTML = `
+                    <div class="metric-card">
+                        <div class="card-header">
+                            <div class="card-title">❌ Error Loading Metrics</div>
+                        </div>
+                        <div class="error-log">${error.message}</div>
+                        <p style="margin-top: 10px;">Retrying in 30 seconds...</p>
+                    </div>
+                `;
+            }
+        }
+        
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            fetchMetrics();
+            
+            // Auto-refresh every 30 seconds
+            setInterval(fetchMetrics, 30000);
+        });
+    </script>

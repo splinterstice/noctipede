@@ -1,14 +1,48 @@
-# Example sites for Noctipede crawler
-# One URL per line, comments start with #
-
-# Clearnet examples
-http://example.com
-https://httpbin.org
-
-# Tor .onion examples (replace with actual .onion addresses)
-# http://3g2upl4pq6kufc4m.onion  # DuckDuckGo
-# http://facebookcorewwwi.onion  # Facebook
-
-# I2P .i2p examples (replace with actual .i2p addresses)  
-# http://stats.i2p
-# http://echelon.i2p
+http://taozgyb2jfbj567lzvfjse4c2snsb37tq3o2iucflxqoilogwc6bx2qd.onion/
+http://3ch.i2p/
+http://tenchan4v5bnlu3gatyjyctlsb25asvncbz4pr7gmomhsrvyx5zfpcad.onion/
+http://10channel.i2p/
+http://lambdaplusjs35padjaiz4jw2fugdoeutse262phqr72uf634s2wdbqd.onion/
+http://l7jqnz3yfe2wtwietafoieadmgqbu7dcmzmey63ktbjtxal3he4a.b32.i2p/
+http://bitchanr4b64govofzjthtu6qc4ytrbuwbgynapkjileajpycioikxad.onion/
+http://bitchan.i2p/
+http://bitchanp3p2oevxxb6cxju5lt3dq5xftlvg25ocmdztw7owrz25p7lad.onion
+http://jyjyltub7kfusniymuiyis7p2uccgrtrl4ww73zjkdmr433jxb5a.b32.i2p/
+http://chii4f4rwugtroicml72gej4ytkkwum3bh26d2feoed5kunht7aa.b32.i2p/
+http://chii4f4rwugtroicml72gej4ytkkwum3bh26d2feoed5kunht7aa.b32.i2p/
+http://26yukmkrhmhfg6alc56oexe7bcrokv4rilwpfwgh2u6bsbkddu55h4ad.onion/
+http://walker.i2p/
+http://lgmtjgfpqk6hpik7yygkhavqivn6wsmfa7s7vszmcxwqkpwodinbhnad.onion/
+http://pixelchxbwamuawou4h5s43ojc5olr64k7h42uhgffjnukxrrdda.b32.i2p/
+http://sonicmfly4cagomgelwtd4hkbsopuhkahfprcvk5hwvb5i2c2q6s7iqd.onion/
+http://k5ykjs4vczzsmiokqps4lvfi2voafjjv6lhqfbqeo5ndvl4fbxta.b32.i2p/
+http://fofx2f6pclukym3lzuasmsrml3uz6k7iwm34z3cnjqcidfw5hp4udqqd.onion/
+http://ntnvj3lavzql7ko5332fd5r7s4vryhkmka6rprrhh437qsi5sh3a.b32.i2p/
+http://cosmiclbou7ypgww4lcs4an3z6otqoevqk6q5jcxml7v7geqml7dlyad.onion/
+http://wavachan.i2p/
+http://dxcha4em3lwfsotttsftaeotqnyma43sa52qaapyspxk4f7payqogqid.onion/
+http://uchanooau3lfmqav57q4743szpcex6jdsyae64veb6th45n2yfaq.b32.i2p/
+http://cfxnvps5mxzdfh7aw5gwhhx2hmbr5vbww4m4m3znk6sjxnrd6l7bvnid.onion/
+http://kislitsa.i2p/
+http://5xmlqu2anbuzfzdzalvgufxqncjyi5gwktuovjbsfvjfcn3h7tca5yad.onion/
+http://nullnyan.i2p/
+http://torum6kfsco6df5yul4cyk6pnzl2dw2scyb5sc2xor3675l77iodw6yd.onion/
+http://kukuku.i2p/
+http://ditexx4sa2nv6uwtqwiihauqfg6kuri4ohdgtn7zn24anyr44svegtad.onion/
+http://3ltsdikanxrdenpjitjt4hndmq77c2l2pxz2qrwurycprlwuaoiq.b32.i2p/
+http://iwojima7cnn53jitsig4xjd23lchircbnu4yzuajdsclchiu3j2dbjad.onion/
+http://vouttzj22msx7lcpgybfhbqoignrawsgo2sg7g7ml5kyuugbbkza.b32.i2p/
+http://dejavuzmognafaelr73if4564f5tfhecr4nxcoubky5qofh5urpshfyd.onion/
+http://ritsuch3huwzg56jdzz7de3fy7c2amxqvgi7v7e4g4cakftwzvyq.b32.i2p/
+http://runionv3do7jdylpx7ufc6qkmygehsiuichjcstpj4hb2ycqrnmp67ad.onion/
+http://74krhulyhiwyupofkbv6kjafs52uepmzengqe24nvw733x35mxxq.b32.i2p/
+http://suomidrm4jxoggzwe4ibav6e74xlx2qoriq33vyqe2gk2gaibngw3uyd.onion/
+http://exprz6eyuops3puimbz47uch37ce7sldswq2ogmbdt2aucw5hv3a.b32.i2p/
+http://galaxy4ogmifzf2wwdkbedqeps7pzxa53bkluyszq6sqng4u5g5nixid.onion/
+http://m522y22o5yyvc4z7tpbl7levr2ofsgbed66eueco4ajtkmospvpq.b32.i2p/
+http://v5ocmeo5igswk45cq3vpo5iomjxy6spzugaqwfx3ublqbxdffbb4pgid.onion/
+http://jba4ew3iuqotl3rw5fgtqozbayclp2dacxsfhpcy3eusdt3dtgaa.b32.i2p/
+http://rawrxd4mden7rmbobaftao3qjyxbrvj4rrooehkqxlqcsdtnnn2hndid.onion/
+http://dickinass.i2p/
+http://xpdzhyr65rgqcljhrgy5jqprzc7qvksdj34w2excdy6ysaaqhk3vnqd.onion/
+http://7redh7wvwwqvz7m5agqgvqtwo6vd2ypxj5hn5ai3w4zf6e6ujy5a.b32.i2p/

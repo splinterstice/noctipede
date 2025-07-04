@@ -107,6 +107,8 @@ All models are served via an external Ollama instance that must be configured se
 
 ## Deployment Options
 
+![Noctipede System Overview](imgs/docker-1.png)
+
 ### 1. Docker Compose Deployment
 
 #### Quick Start
@@ -129,6 +131,8 @@ docker-compose up -d
 - **minio**: Object storage server
 - **noctipede-portal**: Web dashboard for live metrics
 
+![Docker Compose Services](imgs/docker-2.png)
+
 ### 2. Kubernetes Deployment
 
 #### Prerequisites
@@ -138,14 +142,32 @@ docker-compose up -d
 
 #### Deployment Steps
 ```bash
-# Apply configurations in order
+# Quick deployment with automated script
+cd k8s/
+./deploy.sh
+
+# Or manual step-by-step deployment
 kubectl apply -f k8s/namespace.yaml
 kubectl apply -f k8s/secrets.yaml
 kubectl apply -f k8s/configmap.yaml
 kubectl apply -f k8s/mariadb/
 kubectl apply -f k8s/minio/
+kubectl apply -f k8s/proxy/          # NEW: Proxy services
 kubectl apply -f k8s/noctipede/
+
+# Test the deployment
+./test-deployment.sh
 ```
+
+#### New Features in K8s Deployment
+- **🧅 Tor Proxy Service**: Dedicated SOCKS5 proxy for .onion sites
+- **🌐 I2P Proxy Service**: HTTP proxy for .i2p network access  
+- **🔄 Init Containers**: Automatic service dependency management
+- **📊 Live Metrics Portal**: Real-time system monitoring dashboard
+- **🔒 Fixed Session Management**: Resolved database concurrency issues
+- **🚀 Automated Deployment**: One-command deployment with health checks
+
+![Kubernetes Deployment](imgs/kube.png)
 
 ### 3. GitHub Container Registry Deployment
 
@@ -220,6 +242,9 @@ The web portal provides live metrics and monitoring including:
 - Recent crawl activity
 - Top domains by page count
 - System health indicators
+- **AI-Powered Reports**: Natural language querying of crawled data
+
+![Web Portal Dashboard](imgs/docker-3.png)
 
 ## Sites Configuration
 

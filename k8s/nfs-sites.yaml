@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: noctipede-sites-pv
+spec:
+  persistentVolumeReclaimPolicy: Retain
+  capacity:
+    storage: 10Mi
+  accessModes:
+    - ReadWriteMany
+  storageClassName: ""
+  nfs:
+    path: /volume1/Kubernetes/deepweb-proxy/data     # Same path as mcp-config
+    server: 192.168.42.8     # Your NFS server
+  mountOptions:
+    - vers=4
+    - minorversion=1
+    - noac
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: noctipede-sites-pvc
+  namespace: noctipede
+spec:
+  volumeName: noctipede-sites-pv
+  storageClassName: ""
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Mi

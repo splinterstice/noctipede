@@ -225,6 +225,36 @@
                 gap: 10px;
             }
         }
+
+        .dashboard-nav {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .nav-link {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            padding: 10px 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .nav-link.active {
+            background: rgba(76, 175, 80, 0.3);
+            border-color: #4CAF50;
+        }
     </style>
 </head>
 <body>
@@ -232,6 +262,13 @@
         <div class="header">
             <h1>🕷️ Noctipede Crawler Dashboard</h1>
             <div class="subtitle">Live Deep Web Analysis System Monitoring</div>
+        </div>
+
+        <div class="dashboard-nav">
+            <a href="/" class="nav-link active">🏠 Basic Dashboard</a>
+            <a href="/enhanced" class="nav-link">⚡ Enhanced Dashboard</a>
+            <a href="/combined" class="nav-link">🔗 Combined Dashboard</a>
+            <a href="/ai-reports" class="nav-link">🤖 AI Reports</a>
         </div>
         
         <div class="status-bar">
@@ -306,9 +343,9 @@
             try {
                 const response = await fetch('/api/metrics');
                 const data = await response.json();
-                metricsData = data.metrics;
+                metricsData = data.crawler;  // Fixed: use data.crawler instead of data.metrics
                 updateDashboard();
-                updateLastUpdated(data.last_updated);
+                updateLastUpdated(data.timestamp);
             } catch (error) {
                 console.error('Error fetching metrics:', error);
                 showError('Failed to fetch metrics data');
@@ -316,11 +353,11 @@
         }
         
         function updateDashboard() {
-            // Update totals
-            document.getElementById('total-sites').textContent = metricsData.totals?.sites || 0;
-            document.getElementById('total-pages').textContent = metricsData.totals?.pages || 0;
-            document.getElementById('total-media').textContent = metricsData.totals?.media_files || 0;
-            document.getElementById('recent-pages').textContent = metricsData.recent_24h?.pages || 0;
+            // Update totals - map from current data structure
+            document.getElementById('total-sites').textContent = metricsData.progress?.total_sites || 0;
+            document.getElementById('total-pages').textContent = metricsData.real_time?.total_pages || 0;
+            document.getElementById('total-media').textContent = 0; // Not available in current structure
+            document.getElementById('recent-pages').textContent = metricsData.real_time?.pages_last_24h || metricsData.performance?.total_requests_24h || 0;
             
             // Update network chart
             updateNetworkChart();
@@ -367,23 +404,25 @@
         
         function updateStatusChart() {
             const container = document.getElementById('status-chart');
-            const statuses = metricsData.status_breakdown || {};
+            // Map response codes to status breakdown
+            const responseCodes = metricsData.response_codes || {};
             
-            if (Object.keys(statuses).length === 0) {
+            if (Object.keys(responseCodes).length === 0) {
                 container.innerHTML = '<div class="loading">No status data available</div>';
                 return;
             }
             
-            const total = Object.values(statuses).reduce((sum, count) => sum + count, 0);
+            const total = Object.values(responseCodes).reduce((sum, count) => sum + count, 0);
             let html = '';
             
-            for (const [status, count] of Object.entries(statuses)) {
+            for (const [status, count] of Object.entries(responseCodes)) {
                 const percentage = total > 0 ? (count / total * 100).toFixed(1) : 0;
+                const statusLabel = status === '200' ? 'Success' : status === '404' ? 'Not Found' : status === '500' ? 'Server Error' : `HTTP ${status}`;
                 html += `
                     <div style="margin-bottom: 15px;">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                            <span>${status || 'Unknown'}</span>
-                            <span>${count} sites (${percentage}%)</span>
+                            <span>${statusLabel}</span>
+                            <span>${count} requests (${percentage}%)</span>
                         </div>
                         <div class="progress-bar">
                             <div class="progress-fill" style="width: ${percentage}%"></div>
@@ -397,37 +436,46 @@
         
         function updateRecentActivity() {
             const container = document.getElementById('recent-activity');
-            const activities = metricsData.recent_activity || [];
-            
-            if (activities.length === 0) {
-                container.innerHTML = '<div class="loading">No recent activity</div>';
-                return;
-            }
+            // Use recent errors from log analysis or create placeholder activity
+            const recentErrors = metricsData.errors?.recent_errors || [];
+            const lastCrawl = metricsData.real_time?.last_crawl;
             
             let html = '';
-            activities.forEach(activity => {
-                const lastCrawled = activity.last_crawled ? 
-                    new Date(activity.last_crawled).toLocaleString() : 'Never';
-                
+            
+            if (lastCrawl) {
                 html += `
-                    <div class="activity-item ${activity.network_type}">
-                        <div class="activity-url">${activity.url}</div>
-                        <div class="activity-meta">
-                            <span class="network-badge ${activity.network_type}">${activity.network_type.toUpperCase()}</span>
-                            Status: ${activity.status || 'Unknown'} | 
-                            Pages: ${activity.page_count} | 
-                            Last Crawled: ${lastCrawled}
+                    <div style="padding: 10px; border-left: 3px solid #4CAF50; margin-bottom: 10px; background: rgba(76, 175, 80, 0.1);">
+                        <div style="font-weight: bold; color: #4CAF50;">Recent Crawl Activity</div>
+                        <div style="font-size: 0.9rem; opacity: 0.8;">
+                            Last crawl: ${new Date(lastCrawl).toLocaleString()}
                         </div>
                     </div>
                 `;
-            });
+            }
+            
+            if (recentErrors.length > 0) {
+                recentErrors.slice(0, 3).forEach(error => {
+                    html += `
+                        <div style="padding: 10px; border-left: 3px solid #f44336; margin-bottom: 10px; background: rgba(244, 67, 54, 0.1);">
+                            <div style="font-weight: bold; color: #f44336;">Error</div>
+                            <div style="font-size: 0.9rem; opacity: 0.8;">
+                                ${error.error || 'Unknown error'}
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            
+            if (html === '') {
+                html = '<div class="loading">No recent activity</div>';
+            }
             
             container.innerHTML = html;
         }
         
         function updateTopDomains() {
             const container = document.getElementById('top-domains');
-            const domains = metricsData.top_domains || [];
+            const domains = metricsData.real_time?.top_domains || metricsData.top_domains || [];
             
             if (domains.length === 0) {
                 container.innerHTML = '<div class="loading">No domain data available</div>';

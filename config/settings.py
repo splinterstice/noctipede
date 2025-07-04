@@ -31,8 +31,10 @@ class Settings(BaseSettings):
     ollama_moderation_model: str = Field(default="llama3.1:8b", env="OLLAMA_MODERATION_MODEL")
     
     # Crawler Configuration
-    max_links_per_page: int = Field(default=50, env="MAX_LINKS_PER_PAGE")
-    max_queue_size: int = Field(default=500, env="MAX_QUEUE_SIZE")
+    max_links_per_page: int = Field(default=500, env="MAX_LINKS_PER_PAGE")
+    max_queue_size: int = Field(default=1000, env="MAX_QUEUE_SIZE")
+    max_crawl_depth: int = Field(default=10, env="MAX_CRAWL_DEPTH")
+    max_offsite_depth: int = Field(default=1, env="MAX_OFFSITE_DEPTH")
     crawl_delay_seconds: int = Field(default=3, env="CRAWL_DELAY_SECONDS")
     skip_recent_crawls: bool = Field(default=True, env="SKIP_RECENT_CRAWLS")
     recent_crawl_hours: int = Field(default=24, env="RECENT_CRAWL_HOURS")

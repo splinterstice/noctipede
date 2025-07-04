@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Reports - Noctipede</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #ffffff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header .subtitle {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .dashboard-nav {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .nav-link {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            padding: 10px 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .nav-link.active {
+            background: rgba(76, 175, 80, 0.3);
+            border-color: #4CAF50;
+        }
+
+        .main-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 30px;
+        }
+
+        .query-panel {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            height: fit-content;
+        }
+
+        .results-panel {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            min-height: 600px;
+        }
+
+        .query-form {
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #4CAF50;
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .form-control::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        textarea.form-control {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+        }
+
+        .btn:disabled {
+            background: rgba(255, 255, 255, 0.2);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .templates-section {
+            margin-top: 30px;
+        }
+
+        .templates-section h3 {
+            margin-bottom: 15px;
+            color: #ffffff;
+        }
+
+        .template-item {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .template-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .template-name {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .template-description {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        .recent-queries {
+            margin-top: 30px;
+        }
+
+        .query-item {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .query-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .query-text {
+            font-size: 0.9rem;
+            margin-bottom: 5px;
+        }
+
+        .query-meta {
+            font-size: 0.8rem;
+            opacity: 0.7;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 3px solid #ffffff;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .report-container {
+            background: rgba(255, 255, 255, 0.95);
+            color: #333;
+            border-radius: 10px;
+            padding: 25px;
+            margin-top: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .report-header {
+            border-bottom: 2px solid #eee;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+
+        .report-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .report-meta {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .error-message {
+            background: rgba(244, 67, 54, 0.1);
+            border: 1px solid rgba(244, 67, 54, 0.3);
+            color: #f44336;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .success-message {
+            background: rgba(76, 175, 80, 0.1);
+            border: 1px solid rgba(76, 175, 80, 0.3);
+            color: #4CAF50;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .report-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .tab-button {
+            background: none;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s ease;
+            color: #666;
+        }
+
+        .tab-button.active {
+            color: #4CAF50;
+            border-bottom-color: #4CAF50;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @media (max-width: 768px) {
+            .main-container {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .dashboard-nav {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 AI Reports</h1>
+        <p class="subtitle">Generate intelligent reports from your crawled data</p>
+    </div>
+
+    <div class="dashboard-nav">
+        <a href="/" class="nav-link">📊 Basic Dashboard</a>
+        <a href="/enhanced" class="nav-link">🚀 Enhanced Dashboard</a>
+        <a href="/combined" class="nav-link">🔄 Combined Dashboard</a>
+        <a href="/ai-reports" class="nav-link active">🤖 AI Reports</a>
+    </div>
+
+    <div class="main-container">
+        <div class="query-panel">
+            <div class="query-form">
+                <div class="form-group">
+                    <label for="queryText">Ask AI about your data:</label>
+                    <textarea 
+                        id="queryText" 
+                        class="form-control" 
+                        placeholder="Examples:
+• Generate a summary report of all crawled sites
+• Show me the most active domains in the last week
+• Analyze sentiment of content from .onion sites
+• What types of media files have been flagged?
+• Compare activity between Tor and I2P networks
+• Find sites with the most security-related content"
+                    ></textarea>
+                </div>
+                <button id="submitQuery" class="btn">
+                    <span id="submitText">Generate Report</span>
+                    <span id="loadingText" style="display: none;">Processing...</span>
+                </button>
+            </div>
+
+            <div class="templates-section">
+                <h3>📋 Query Templates</h3>
+                <div id="templatesList">
+                    <!-- Templates will be loaded here -->
+                </div>
+            </div>
+
+            <div class="recent-queries">
+                <h3>🕒 Recent Queries</h3>
+                <div id="recentQueriesList">
+                    <!-- Recent queries will be loaded here -->
+                </div>
+            </div>
+        </div>
+
+        <div class="results-panel">
+            <div id="welcomeMessage">
+                <h2>Welcome to AI Reports! 🎯</h2>
+                <p>Ask natural language questions about your crawled data and get intelligent reports powered by AI.</p>
+                
+                <h3>What you can ask:</h3>
+                <ul>
+                    <li><strong>Summary Reports:</strong> "Generate an overview of all crawled data"</li>
+                    <li><strong>Network Analysis:</strong> "Compare Tor vs I2P site activity"</li>
+                    <li><strong>Content Analysis:</strong> "Show sentiment analysis of recent pages"</li>
+                    <li><strong>Security Insights:</strong> "Find potentially suspicious content"</li>
+                    <li><strong>Media Analysis:</strong> "What types of images were found?"</li>
+                    <li><strong>Trend Analysis:</strong> "Show crawling activity over time"</li>
+                </ul>
+
+                <p>Simply type your question above and click "Generate Report" to get started!</p>
+            </div>
+
+            <div id="loadingContainer" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>AI is analyzing your query and generating a report...</p>
+            </div>
+
+            <div id="errorContainer" style="display: none;">
+                <div class="error-message">
+                    <strong>Error:</strong> <span id="errorMessage"></span>
+                </div>
+            </div>
+
+            <div id="resultsContainer" style="display: none;">
+                <!-- Reports will be displayed here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class AIReportsApp {
+            constructor() {
+                this.currentQuery = null;
+                this.init();
+            }
+
+            init() {
+                this.bindEvents();
+                this.loadTemplates();
+                this.loadRecentQueries();
+            }
+
+            bindEvents() {
+                document.getElementById('submitQuery').addEventListener('click', () => {
+                    this.submitQuery();
+                });
+
+                document.getElementById('queryText').addEventListener('keydown', (e) => {
+                    if (e.ctrlKey && e.key === 'Enter') {
+                        this.submitQuery();
+                    }
+                });
+            }
+
+            async submitQuery() {
+                const queryText = document.getElementById('queryText').value.trim();
+                if (!queryText) {
+                    this.showError('Please enter a query');
+                    return;
+                }
+
+                this.showLoading();
+                this.setSubmitButtonState(true);
+
+                try {
+                    const response = await fetch('/api/ai-reports/query', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            query: queryText,
+                            user_session: this.getUserSession()
+                        })
+                    });
+
+                    const result = await response.json();
+
+                    if (result.status === 'completed') {
+                        this.displayReports(result.reports, result.cached);
+                        this.loadRecentQueries(); // Refresh recent queries
+                    } else if (result.status === 'failed') {
+                        this.showError(result.error || 'Failed to process query');
+                    } else {
+                        this.showError('Unexpected response from server');
+                    }
+
+                } catch (error) {
+                    console.error('Error submitting query:', error);
+                    this.showError('Network error. Please try again.');
+                } finally {
+                    this.hideLoading();
+                    this.setSubmitButtonState(false);
+                }
+            }
+
+            showLoading() {
+                document.getElementById('welcomeMessage').style.display = 'none';
+                document.getElementById('errorContainer').style.display = 'none';
+                document.getElementById('resultsContainer').style.display = 'none';
+                document.getElementById('loadingContainer').style.display = 'block';
+            }
+
+            hideLoading() {
+                document.getElementById('loadingContainer').style.display = 'none';
+            }
+
+            showError(message) {
+                document.getElementById('errorMessage').textContent = message;
+                document.getElementById('welcomeMessage').style.display = 'none';
+                document.getElementById('loadingContainer').style.display = 'none';
+                document.getElementById('resultsContainer').style.display = 'none';
+                document.getElementById('errorContainer').style.display = 'block';
+            }
+
+            setSubmitButtonState(loading) {
+                const button = document.getElementById('submitQuery');
+                const submitText = document.getElementById('submitText');
+                const loadingText = document.getElementById('loadingText');
+
+                button.disabled = loading;
+                submitText.style.display = loading ? 'none' : 'inline';
+                loadingText.style.display = loading ? 'inline' : 'none';
+            }
+
+            displayReports(reports, cached = false) {
+                const container = document.getElementById('resultsContainer');
+                container.innerHTML = '';
+
+                if (cached) {
+                    const cachedNotice = document.createElement('div');
+                    cachedNotice.className = 'success-message';
+                    cachedNotice.innerHTML = '<strong>Cached Result:</strong> This report was generated recently and retrieved from cache.';
+                    container.appendChild(cachedNotice);
+                }
+
+                reports.forEach((report, index) => {
+                    const reportDiv = document.createElement('div');
+                    reportDiv.className = 'report-container';
+                    
+                    reportDiv.innerHTML = `
+                        <div class="report-header">
+                            <div class="report-title">${report.title}</div>
+                            <div class="report-meta">
+                                Generated: ${new Date(report.created_at).toLocaleString()} | 
+                                Records: ${report.record_count || 0} | 
+                                Time: ${(report.generation_time || 0).toFixed(2)}s
+                            </div>
+                        </div>
+                        
+                        ${report.summary ? `
+                            <div class="report-summary">
+                                <h4>Summary</h4>
+                                <p>${report.summary}</p>
+                            </div>
+                        ` : ''}
+                        
+                        <div class="report-tabs">
+                            <button class="tab-button active" onclick="this.parentNode.parentNode.querySelector('.tab-content.active').classList.remove('active'); this.parentNode.parentNode.querySelector('#content-${index}').classList.add('active'); this.parentNode.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active')); this.classList.add('active');">Report</button>
+                            ${report.data ? `<button class="tab-button" onclick="this.parentNode.parentNode.querySelector('.tab-content.active').classList.remove('active'); this.parentNode.parentNode.querySelector('#data-${index}').classList.add('active'); this.parentNode.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active')); this.classList.add('active');">Data</button>` : ''}
+                        </div>
+                        
+                        <div id="content-${index}" class="tab-content active">
+                            ${report.content || '<p>No content available</p>'}
+                        </div>
+                        
+                        ${report.data ? `
+                            <div id="data-${index}" class="tab-content">
+                                <pre style="background: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto; font-size: 0.9rem;">${JSON.stringify(report.data, null, 2)}</pre>
+                            </div>
+                        ` : ''}
+                    `;
+                    
+                    container.appendChild(reportDiv);
+                });
+
+                document.getElementById('welcomeMessage').style.display = 'none';
+                document.getElementById('errorContainer').style.display = 'none';
+                document.getElementById('loadingContainer').style.display = 'none';
+                container.style.display = 'block';
+            }
+
+            async loadTemplates() {
+                try {
+                    const response = await fetch('/api/ai-reports/templates');
+                    const templates = await response.json();
+                    
+                    const container = document.getElementById('templatesList');
+                    container.innerHTML = '';
+                    
+                    if (templates.length === 0) {
+                        container.innerHTML = '<p style="opacity: 0.7; font-size: 0.9rem;">No templates available</p>';
+                        return;
+                    }
+                    
+                    templates.forEach(template => {
+                        const templateDiv = document.createElement('div');
+                        templateDiv.className = 'template-item';
+                        templateDiv.innerHTML = `
+                            <div class="template-name">${template.name}</div>
+                            <div class="template-description">${template.description}</div>
+                        `;
+                        
+                        templateDiv.addEventListener('click', () => {
+                            document.getElementById('queryText').value = template.example_query || template.template_text;
+                        });
+                        
+                        container.appendChild(templateDiv);
+                    });
+                    
+                } catch (error) {
+                    console.error('Error loading templates:', error);
+                }
+            }
+
+            async loadRecentQueries() {
+                try {
+                    const response = await fetch('/api/ai-reports/recent');
+                    const queries = await response.json();
+                    
+                    const container = document.getElementById('recentQueriesList');
+                    container.innerHTML = '';
+                    
+                    if (queries.length === 0) {
+                        container.innerHTML = '<p style="opacity: 0.7; font-size: 0.9rem;">No recent queries</p>';
+                        return;
+                    }
+                    
+                    queries.slice(0, 10).forEach(query => {
+                        const queryDiv = document.createElement('div');
+                        queryDiv.className = 'query-item';
+                        queryDiv.innerHTML = `
+                            <div class="query-text">${query.query_text}</div>
+                            <div class="query-meta">
+                                ${new Date(query.created_at).toLocaleDateString()} | 
+                                ${(query.processing_time || 0).toFixed(2)}s | 
+                                ${query.report_count} reports
+                            </div>
+                        `;
+                        
+                        queryDiv.addEventListener('click', () => {
+                            document.getElementById('queryText').value = query.query_text;
+                        });
+                        
+                        container.appendChild(queryDiv);
+                    });
+                    
+                } catch (error) {
+                    console.error('Error loading recent queries:', error);
+                }
+            }
+
+            getUserSession() {
+                let session = localStorage.getItem('ai_reports_session');
+                if (!session) {
+                    session = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                    localStorage.setItem('ai_reports_session', session);
+                }
+                return session;
+            }
+        }
+
+        // Initialize the app when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new AIReportsApp();
+        });
+    </script>
+</body>
+</html>

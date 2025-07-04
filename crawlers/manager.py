@@ -1,6 +1,7 @@
-"""Crawler management and coordination."""
+"""Crawler management and coordination with async support."""
 
 import os
+import asyncio
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any
@@ -64,8 +65,33 @@ class CrawlerManager:
             except:
                 self.logger.warning(f"Queue full, skipping URL: {url}")
     
-    def crawl_sites(self, sites: List[str] = None) -> Dict[str, Any]:
-        """Crawl multiple sites using appropriate crawlers."""
+    async def _crawl_site_async(self, url: str, crawler) -> Dict[str, Any]:
+        """Async wrapper for crawling a single site."""
+        try:
+            if hasattr(crawler, 'crawl_site') and asyncio.iscoroutinefunction(crawler.crawl_site):
+                # Async crawler (like I2P)
+                result = await crawler.crawl_site(url)
+            else:
+                # Sync crawler (like Tor, Clearnet)
+                result = crawler.crawl_site(url)
+            
+            return {
+                'url': url,
+                'success': len(result.get('pages', [])) > 0 if isinstance(result, dict) else bool(result),
+                'result': result,
+                'network_type': get_network_type(url)
+            }
+        except Exception as e:
+            self.logger.error(f"Error crawling {url}: {e}")
+            return {
+                'url': url,
+                'success': False,
+                'error': str(e),
+                'network_type': get_network_type(url)
+            }
+    
+    async def crawl_sites_async(self, sites: List[str] = None) -> Dict[str, Any]:
+        """Crawl multiple sites using appropriate crawlers (async version)."""
         if sites is None:
             sites = self.load_sites_from_file()
         
@@ -73,10 +99,6 @@ class CrawlerManager:
             self.logger.error("No sites to crawl")
             return {'success': False, 'message': 'No sites to crawl'}
         
-        # Add sites to queue
-        self.add_urls_to_queue(sites)
-        
-        # Start crawling with thread pool
         results = {
             'total_sites': len(sites),
             'successful': 0,
@@ -84,70 +106,77 @@ class CrawlerManager:
             'results': []
         }
         
-        with ThreadPoolExecutor(max_workers=self.settings.max_concurrent_crawlers) as executor:
-            # Submit crawling tasks
-            future_to_url = {}
-            
-            while not self.url_queue.empty():
-                try:
-                    url = self.url_queue.get(timeout=1)
-                    network_type = get_network_type(url)
-                    crawler = self.crawlers.get(network_type)
-                    
-                    if crawler:
-                        future = executor.submit(crawler.crawl_site, url)
-                        future_to_url[future] = url
-                    else:
-                        self.logger.warning(f"No crawler available for network type: {network_type}")
-                        results['failed'] += 1
-                        
-                except Empty:
-                    break
-                except Exception as e:
-                    self.logger.error(f"Error submitting crawl task: {e}")
-                    results['failed'] += 1
-            
-            # Process completed tasks
-            for future in as_completed(future_to_url):
-                url = future_to_url[future]
-                try:
-                    success = future.result()
-                    if success:
-                        results['successful'] += 1
-                        self.logger.info(f"Successfully crawled: {url}")
-                    else:
-                        results['failed'] += 1
-                        self.logger.warning(f"Failed to crawl: {url}")
-                    
-                    results['results'].append({
-                        'url': url,
-                        'success': success,
-                        'network_type': get_network_type(url)
-                    })
-                    
-                except Exception as e:
-                    results['failed'] += 1
-                    self.logger.error(f"Error crawling {url}: {e}")
-                    results['results'].append({
-                        'url': url,
-                        'success': False,
-                        'error': str(e),
-                        'network_type': get_network_type(url)
-                    })
+        # Group sites by network type for better handling
+        sites_by_network = {}
+        for site in sites:
+            network_type = get_network_type(site)
+            if network_type not in sites_by_network:
+                sites_by_network[network_type] = []
+            sites_by_network[network_type].append(site)
         
-        self.logger.info(f"Crawling completed. Success: {results['successful']}, Failed: {results['failed']}")
+        self.logger.info(f"Sites by network: {[(k, len(v)) for k, v in sites_by_network.items()]}")
+        
+        # Handle I2P sites first with readiness check
+        if 'i2p' in sites_by_network:
+            i2p_crawler = self.crawlers.get('i2p')
+            if i2p_crawler:
+                self.logger.info(f"🔄 Pre-checking I2P network readiness for {len(sites_by_network['i2p'])} sites...")
+                # Wait for I2P readiness once for all I2P sites
+                await i2p_crawler.wait_for_i2p_readiness()
+        
+        # Create tasks for all sites
+        tasks = []
+        for site in sites:
+            network_type = get_network_type(site)
+            crawler = self.crawlers.get(network_type)
+            
+            if crawler:
+                task = self._crawl_site_async(site, crawler)
+                tasks.append(task)
+            else:
+                self.logger.warning(f"No crawler available for network type: {network_type}")
+                results['failed'] += 1
+        
+        # Execute all tasks concurrently
+        if tasks:
+            completed_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for result in completed_results:
+                if isinstance(result, Exception):
+                    self.logger.error(f"Task failed with exception: {result}")
+                    results['failed'] += 1
+                else:
+                    if result['success']:
+                        results['successful'] += 1
+                        self.logger.info(f"✅ Successfully crawled: {result['url']}")
+                    else:
+                        results['failed'] += 1
+                        self.logger.warning(f"❌ Failed to crawl: {result['url']}")
+                    
+                    results['results'].append(result)
+        
+        self.logger.info(f"🎯 Crawling completed. Success: {results['successful']}, Failed: {results['failed']}")
         return results
     
-    def crawl_single_site(self, url: str) -> bool:
-        """Crawl a single site using the appropriate crawler."""
+    def crawl_sites(self, sites: List[str] = None) -> Dict[str, Any]:
+        """Crawl multiple sites using appropriate crawlers (sync wrapper)."""
+        return asyncio.run(self.crawl_sites_async(sites))
+    
+    async def crawl_single_site_async(self, url: str) -> Dict[str, Any]:
+        """Crawl a single site using the appropriate crawler (async)."""
         network_type = get_network_type(url)
         crawler = self.crawlers.get(network_type)
         
         if not crawler:
             self.logger.error(f"No crawler available for network type: {network_type}")
-            return False
+            return {'success': False, 'error': f'No crawler for {network_type}'}
         
-        return crawler.crawl_site(url)
+        return await self._crawl_site_async(url, crawler)
+    
+    def crawl_single_site(self, url: str) -> bool:
+        """Crawl a single site using the appropriate crawler (sync wrapper)."""
+        result = asyncio.run(self.crawl_single_site_async(url))
+        return result.get('success', False)
     
     def get_crawler_stats(self) -> Dict[str, Any]:
         """Get statistics about crawler performance."""

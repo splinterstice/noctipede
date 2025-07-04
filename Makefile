@@ -64,7 +64,7 @@ format:
 
 # Docker targets
 docker-build:
-	docker build -t noctipede:latest -f docker/Dockerfile .
+	docker build --no-cache -t noctipede:latest -f docker/Dockerfile .
 
 docker-run:
 	docker run -d --name noctipede-app \
@@ -138,7 +138,7 @@ ghcr-login:
 
 ghcr-build:
 	@echo "Building image for GitHub Container Registry..."
-	docker build -t $(IMAGE_NAME):$(VERSION) -f docker/Dockerfile .
+	docker build --no-cache -t $(IMAGE_NAME):$(VERSION) -f docker/Dockerfile .
 	docker tag $(IMAGE_NAME):$(VERSION) $(IMAGE_NAME):latest
 	@echo "Built and tagged: $(IMAGE_NAME):$(VERSION)"
 	@echo "Built and tagged: $(IMAGE_NAME):latest"

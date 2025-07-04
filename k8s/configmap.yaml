@@ -11,29 +11,33 @@ data:
   MARIADB_DATABASE: "splinter-research"
   
   # MinIO Configuration
-  MINIO_ENDPOINT: "minio-crawler-hl.noctipede:9000"
+  MINIO_ENDPOINT: "minio.noctipede:9000"
   MINIO_BUCKET_NAME: "noctipede-data"
   MINIO_SECURE: "false"
   
   # AI/Ollama Configuration
+  OLLAMA_ENDPOINT: "http://ollama:11434"
   OLLAMA_VISION_MODEL: "llama3.2-vision:11b"
   OLLAMA_TEXT_MODEL: "gemma3:12b"
   OLLAMA_MODERATION_MODEL: "llama3.1:8b"
   
-  # Crawler Configuration
-  MAX_LINKS_PER_PAGE: "50"
-  MAX_QUEUE_SIZE: "500"
+  # Crawler Configuration - Updated to match Docker Compose
+  MAX_LINKS_PER_PAGE: "500"  # Updated to match Docker Compose
+  MAX_QUEUE_SIZE: "1000"     # Updated to match Docker Compose
+  MAX_CRAWL_DEPTH: "10"      # Added from Docker Compose
+  MAX_OFFSITE_DEPTH: "1"     # Added from Docker Compose
   CRAWL_DELAY_SECONDS: "3"
-  SKIP_RECENT_CRAWLS: "true"
+  SKIP_RECENT_CRAWLS: "false"  # Updated to match Docker Compose (disabled for testing)
   RECENT_CRAWL_HOURS: "24"
   MAX_CONCURRENT_CRAWLERS: "10"
   
-  # Network Configuration
-  TOR_PROXY_HOST: "127.0.0.1"
-  TOR_PROXY_PORT: "9050"
-  I2P_PROXY_HOST: "127.0.0.1"
+  # Network Configuration - Updated to match Docker Compose
+  TOR_PROXY_HOST: "tor-proxy"
+  TOR_PROXY_PORT: "9150"  # Updated to match Docker Compose internal port
+  I2P_PROXY_HOST: "i2p-proxy"
   I2P_PROXY_PORT: "4444"
-  I2P_INTERNAL_PROXIES: ""
+  USE_I2P_INTERNAL_PROXIES: "true"  # Enable I2P internal proxy fallback
+  I2P_INTERNAL_PROXIES: "notbob.i2p,purokishi.i2p,false.i2p,stormycloud.i2p"  # Match Docker Compose
   
   # Application Configuration
   LOG_LEVEL: "INFO"

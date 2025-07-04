@@ -17,8 +17,10 @@ from core import (
     is_supported_image_format, validate_and_process_image, is_image_safe_to_process
 )
 from config import get_settings
-from database import get_db_session, Site, Page, MediaFile
+from database import get_db_manager, Site, Page, MediaFile
+from database.session import get_session_manager
 from storage import StorageManager
+from analysis.manager import AnalysisManager
 
 
 class BaseCrawler(ABC):
@@ -29,6 +31,14 @@ class BaseCrawler(ABC):
         self.logger = get_logger(self.__class__.__name__)
         self.session = self._create_session()
         self.storage_manager = StorageManager()
+        
+        # Initialize AI analysis manager if enabled
+        if self.settings.content_analysis_enabled:
+            self.analysis_manager = AnalysisManager()
+            self.logger.info("AI Analysis enabled")
+        else:
+            self.analysis_manager = None
+            self.logger.info("AI Analysis disabled")
         # Remove the shared db_session - we'll create one per operation instead
     
     def _create_session(self) -> requests.Session:
@@ -60,41 +70,38 @@ class BaseCrawler(ABC):
     
     def crawl_site(self, url: str) -> bool:
         """Crawl a single site."""
-        # Create a new database session for this operation
-        db_session = get_db_session()
+        # Use the session manager for proper transaction handling
+        session_manager = get_session_manager()
         
         try:
-            # Check if site was recently crawled
-            if self._should_skip_site(url, db_session):
-                self.logger.info(f"Skipping recently crawled site: {url}")
-                return True
-            
-            # Get or create site record
-            site = self._get_or_create_site(url, db_session)
-            if not site:
-                return False
-            
-            # Crawl the site
-            success = self._crawl_site_pages(site, db_session)
-            
-            # Update site record
-            site.last_crawled = datetime.utcnow()
-            if success:
-                site.crawl_count += 1
-                site.error_count = 0
-                site.last_error = None
-            else:
-                site.error_count += 1
-            
-            db_session.commit()
-            return success
-            
+            with session_manager.transaction() as db_session:
+                # Check if site was recently crawled
+                if self._should_skip_site(url, db_session):
+                    self.logger.info(f"Skipping recently crawled site: {url}")
+                    return True
+                
+                # Get or create site record
+                site = self._get_or_create_site(url, db_session)
+                if not site:
+                    return False
+                
+                # Crawl the site
+                success = self._crawl_site_pages(site, db_session)
+                
+                # Update site record
+                site.last_crawled = datetime.utcnow()
+                if success:
+                    site.crawl_count += 1
+                    site.error_count = 0
+                    site.last_error = None
+                else:
+                    site.error_count += 1
+                
+                # Transaction will be committed automatically by context manager
+                return success
+                
         except Exception as e:
             self.logger.error(f"Error crawling site {url}: {e}")
-            db_session.rollback()
-            return False
-        finally:
-            db_session.close()
             return False
     
     def _should_skip_site(self, url: str, db_session) -> bool:
@@ -127,7 +134,7 @@ class BaseCrawler(ABC):
                     created_at=datetime.utcnow()
                 )
                 db_session.add(site)
-                db_session.commit()
+                # Don't commit here - let the transaction manager handle it
             
             return site
             
@@ -136,16 +143,29 @@ class BaseCrawler(ABC):
             return None
     
     def _crawl_site_pages(self, site: Site, db_session) -> bool:
-        """Crawl pages for a site."""
+        """Crawl pages for a site with depth tracking."""
         try:
-            # Start with the main page
-            pages_to_crawl = [site.url]
+            # Ensure site object is properly bound to current session
+            db_session.merge(site)  # Use merge instead of refresh for better session handling
+            
+            # Start with the main page at depth 0
+            # Format: (url, depth, is_offsite)
+            pages_to_crawl = [(site.url, 0, False)]
             crawled_pages = set()
+            site_domain = extract_domain(site.url)
             
             while pages_to_crawl and len(crawled_pages) < self.settings.max_links_per_page:
-                current_url = pages_to_crawl.pop(0)
+                current_url, current_depth, is_offsite = pages_to_crawl.pop(0)
                 
                 if current_url in crawled_pages:
+                    continue
+                
+                # Check depth limits
+                if is_offsite and current_depth > self.settings.max_offsite_depth:
+                    self.logger.debug(f"Skipping {current_url} - exceeds offsite depth limit ({current_depth} > {self.settings.max_offsite_depth})")
+                    continue
+                elif not is_offsite and current_depth > self.settings.max_crawl_depth:
+                    self.logger.debug(f"Skipping {current_url} - exceeds crawl depth limit ({current_depth} > {self.settings.max_crawl_depth})")
                     continue
                 
                 # Crawl the page
@@ -156,12 +176,18 @@ class BaseCrawler(ABC):
                     # Extract links for further crawling
                     if page_data.get('links'):
                         for link in page_data['links'][:10]:  # Limit links per page
-                            if link not in crawled_pages and link not in pages_to_crawl:
-                                pages_to_crawl.append(link)
+                            if link not in crawled_pages and not any(url == link for url, _, _ in pages_to_crawl):
+                                # Determine if this link is offsite
+                                link_domain = extract_domain(link)
+                                link_is_offsite = (link_domain != site_domain)
+                                
+                                # Add to queue with incremented depth
+                                pages_to_crawl.append((link, current_depth + 1, link_is_offsite))
                 
                 # Respect crawl delay
                 time.sleep(self.settings.crawl_delay_seconds)
             
+            self.logger.info(f"Crawled {len(crawled_pages)} pages for {site.url}")
             return True
             
         except Exception as e:
@@ -221,12 +247,26 @@ class BaseCrawler(ABC):
             
             db_session.add(page)
             
-            # Update site page count
+            # Update site page count - Fix: Refresh site object in current session
             site = db_session.query(Site).filter_by(id=site_id).first()
             if site:
                 site.page_count = (site.page_count or 0) + 1
             
-            db_session.commit()
+            # Flush to ensure page.id is available for AI analysis
+            db_session.flush()
+            
+            # Perform AI analysis if enabled
+            if self.analysis_manager and self.settings.content_analysis_enabled:
+                try:
+                    self.logger.info(f"Starting AI analysis for page: {url}")
+                    # Page object should be properly bound to current session
+                    analysis_result = self.analysis_manager.analyze_page(page.id)
+                    if analysis_result:
+                        self.logger.info(f"AI analysis completed for page: {url}")
+                    else:
+                        self.logger.warning(f"AI analysis failed for page: {url}")
+                except Exception as e:
+                    self.logger.error(f"AI analysis error for page {url}: {e}")
             
             # Extract and store media files
             media_files = self._extract_media_files(soup, url, page.id, db_session)
@@ -365,7 +405,7 @@ class BaseCrawler(ABC):
             )
             
             db_session.add(media_file)
-            db_session.commit()
+            # Don't commit here - let the transaction manager handle it
             
             self.logger.debug(f"Downloaded and stored media: {url}")
             return media_file

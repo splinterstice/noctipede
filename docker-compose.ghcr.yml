@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  noctipede-app:
+    image: ${IMAGE_NAME:-ghcr.io/splinterstice/noctipede:latest}
+    container_name: noctipede-app
+    restart: unless-stopped
+    depends_on:
+      - mariadb
+      - minio
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - MARIADB_HOST=mariadb
+      - MINIO_ENDPOINT=minio:9000
+    networks:
+      - noctipede-network
+
+  noctipede-web:
+    image: ${IMAGE_NAME:-ghcr.io/splinterstice/noctipede:latest}
+    container_name: noctipede-web
+    restart: unless-stopped
+    depends_on:
+      - mariadb
+      - minio
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./output:/app/output
+    env_file:
+      - .env
+    environment:
+      - MARIADB_HOST=mariadb
+      - MINIO_ENDPOINT=minio:9000
+    command: python -m noctipede.api.main
+    networks:
+      - noctipede-network
+
+  mariadb:
+    image: mariadb:10.11
+    container_name: noctipede-mariadb
+    restart: unless-stopped
+    environment:
+      - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD}
+      - MARIADB_DATABASE=${MARIADB_DATABASE:-splinter-research}
+      - MARIADB_USER=${MARIADB_USER:-splinter-research}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./database/init:/docker-entrypoint-initdb.d
+    ports:
+      - "3306:3306"
+    networks:
+      - noctipede-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: noctipede-minio
+    restart: unless-stopped
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: server /data --console-address ":9001"
+    networks:
+      - noctipede-network
+
+volumes:
+  mariadb_data:
+  minio_data:
+
+networks:
+  noctipede-network:
+    driver: bridge

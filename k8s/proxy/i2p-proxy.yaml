@@ -1,0 +1,191 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: i2p-config
+  namespace: noctipede
+  labels:
+    app: i2p-proxy
+    component: proxy
+data:
+  i2pd.conf: |
+    # Minimal I2PD Configuration for Noctipede Crawler
+    # Basic settings that work with I2PD
+
+    # Network settings
+    ipv4 = true
+    ipv6 = false
+    nat = true
+
+    # Logging
+    log = stdout
+    loglevel = info
+
+    # Data directory
+    datadir = /home/i2pd/data
+
+    # Daemon settings
+    daemon = false
+
+    # HTTP Proxy (essential for crawler)
+    httpproxy.enabled = true
+    httpproxy.address = 0.0.0.0
+    httpproxy.port = 4444
+    httpproxy.keys = http-proxy-keys.dat
+
+    # Web console
+    http.enabled = true
+    http.address = 0.0.0.0
+    http.port = 7070
+
+    # SAM interface
+    sam.enabled = true
+    sam.address = 0.0.0.0
+    sam.port = 7656
+
+    # Basic performance settings
+    limits.transittunnels = 1000
+
+    # Reseeding
+    reseed.verify = true
+
+    # NTCP2 transport
+    ntcp2.enabled = true
+
+    # SSU2 transport  
+    ssu2.enabled = true
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: i2p-proxy
+  namespace: noctipede
+  labels:
+    app: i2p-proxy
+    component: proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: i2p-proxy
+  template:
+    metadata:
+      labels:
+        app: i2p-proxy
+        component: proxy
+    spec:
+      containers:
+      - name: i2p-proxy
+        image: purplei2p/i2pd:latest  # Updated to match Docker Compose
+        ports:
+        - containerPort: 4444
+          name: http-proxy
+          protocol: TCP
+        - containerPort: 7070
+          name: web-console
+          protocol: TCP
+        - containerPort: 7656
+          name: sam-interface
+          protocol: TCP
+        env:
+        - name: ENABLE_IPV6
+          value: "false"  # Match Docker Compose environment
+        command: ["/usr/local/bin/i2pd"]  # Fixed: Use proper executable
+        args: ["--conf=/home/i2pd/data/i2pd.conf"]  # Fixed: Pass config as argument
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        startupProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "nc -z localhost 4444"  # Match Docker Compose healthcheck
+          initialDelaySeconds: 60   # I2P takes time to bootstrap
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 10      # 5 minutes total startup time
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "nc -z localhost 4444"
+          initialDelaySeconds: 300  # Start after 5 minutes
+          periodSeconds: 60
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "nc -z localhost 4444"
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        volumeMounts:
+        - name: i2p-data
+          mountPath: /home/i2pd/data  # Updated to match I2PD path
+        - name: i2p-config
+          mountPath: /home/i2pd/data/i2pd.conf
+          subPath: i2pd.conf
+          readOnly: true
+      volumes:
+      - name: i2p-data
+        persistentVolumeClaim:
+          claimName: i2p-data-pvc
+      - name: i2p-config
+        configMap:
+          name: i2p-config
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: i2p-proxy
+  namespace: noctipede
+  labels:
+    app: i2p-proxy
+    component: proxy
+spec:
+  type: ClusterIP
+  ports:
+  - port: 4444
+    targetPort: 4444
+    protocol: TCP
+    name: http-proxy
+  - port: 7070
+    targetPort: 7070
+    protocol: TCP
+    name: web-console
+  - port: 7656
+    targetPort: 7656
+    protocol: TCP
+    name: sam-interface
+  selector:
+    app: i2p-proxy
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: i2p-data-pvc
+  namespace: noctipede
+  labels:
+    app: i2p-proxy
+    component: proxy
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: longhorn

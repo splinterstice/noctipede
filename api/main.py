@@ -1,49 +1,27 @@
 """Main FastAPI application."""
 
 import uvicorn
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.templating import Jinja2Templates
 
 from core import setup_logging, get_logger
 from config import get_settings
 from database import get_db_manager
 from .routes import router
+from .analysis_portal import router as analysis_router
 
 # Setup logging
 setup_logging()
 logger = get_logger(__name__)
 
-# Create FastAPI app
-app = FastAPI(
-    title="Noctipede API",
-    description="Deep Web Analysis System API",
-    version="1.0.0"
-)
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Include routes
-app.include_router(router, prefix="/api/v1")
-
-# Mount static files
-try:
-    app.mount("/static", StaticFiles(directory="/app/output"), name="static")
-except Exception as e:
-    logger.warning(f"Could not mount static files: {e}")
-
-
-@app.on_startup
-async def startup_event():
-    """Initialize application on startup."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager."""
+    # Startup
     logger.info("Starting Noctipede API")
     
     # Test database connection
@@ -55,12 +33,51 @@ async def startup_event():
     # Create tables if they don't exist
     db_manager.create_tables()
     logger.info("Database initialized")
-
-
-@app.on_shutdown
-async def shutdown_event():
-    """Cleanup on shutdown."""
+    
+    yield
+    
+    # Shutdown
     logger.info("Shutting down Noctipede API")
+
+# Create FastAPI app
+app = FastAPI(
+    title="Noctipede API",
+    description="Deep Web Analysis System API",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Setup templates
+templates = Jinja2Templates(directory="/app/api/templates")
+
+# Include routes
+app.include_router(router, prefix="/api/v1")
+app.include_router(analysis_router, prefix="/api")
+
+@app.get("/analysis", response_class=HTMLResponse)
+async def analysis_portal():
+    """Serve the analysis portal page."""
+    try:
+        with open("/app/api/templates/analysis_portal.html", "r") as f:
+            return HTMLResponse(content=f.read())
+    except Exception as e:
+        logger.error(f"Error serving analysis portal: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load analysis portal")
+
+# Mount static files
+try:
+    app.mount("/static", StaticFiles(directory="/app/output"), name="static")
+except Exception as e:
+    logger.warning(f"Could not mount static files: {e}")
 
 
 @app.get("/health")

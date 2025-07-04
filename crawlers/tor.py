@@ -16,9 +16,8 @@ class TorCrawler(BaseCrawler):
             'https': f'socks5h://{self.settings.tor_proxy_host}:{self.settings.tor_proxy_port}'
         }
         
-        # DO NOT set global socket proxy - this affects database connections too
-        # socks.set_default_proxy() is removed to prevent database connection issues
-        socket.socket = socks.socksocket
+        # FIXED: Remove global socket proxy setting that breaks database connections
+        # socket.socket = socks.socksocket  # This line was causing issues
         
         self.logger.info(f"Configured Tor proxy: {self.settings.tor_proxy_host}:{self.settings.tor_proxy_port}")
     

@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Noctipede Combined Metrics Dashboard</title>
+    <!-- 
+    FIXED: Combined Dashboard Issues
+    1. Ollama Status: Added defensive logic to use individual metrics over services status
+    2. Ollama Connection: Fixed to use status-based logic instead of non-existent connection field
+    3. System Resources: Fixed field names to match API (percent vs usage_percent)
+    4. Network Status: Use evidence-based logic (successful crawls prove proxies work)
+    - updateOllamaMetrics(): Uses individual status and status-based connection
+    - updateStatusIndicators(): Prioritizes individual Ollama status
+    - updateSystemMetrics(): Uses correct API field names (system.cpu.percent, etc.)
+    - getNetworkStatus(): Uses crawler evidence (tor: 23 sites, i2p: 24 sites crawled)
+    -->
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #ffffff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header .subtitle {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .dashboard-nav {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .nav-link {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            padding: 10px 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .nav-link.active {
+            background: rgba(76, 175, 80, 0.3);
+            border-color: #4CAF50;
+        }
+
+        .status-bar {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .status-indicator {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 15px 25px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-healthy { background-color: #4CAF50; }
+        .status-warning { background-color: #FF9800; }
+        .status-error { background-color: #F44336; }
+        .status-unknown { background-color: #9E9E9E; }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .metric-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .metric-card.wide {
+            grid-column: span 2;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .card-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .metric-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            margin-bottom: 5px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            transition: width 0.3s ease;
+        }
+
+        .progress-fill.warning {
+            background: linear-gradient(90deg, #FF9800, #FFC107);
+        }
+
+        .progress-fill.error {
+            background: linear-gradient(90deg, #F44336, #FF5722);
+        }
+
+        .metric-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .metric-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            word-break: break-all;
+            gap: 10px;
+        }
+
+        .metric-list li:last-child {
+            border-bottom: none;
+        }
+
+        .metric-list li span:first-child {
+            flex: 1;
+            min-width: 0;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .metric-list li span:last-child {
+            flex-shrink: 0;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+
+        .response-codes {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .response-code {
+            text-align: center;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
+
+        .response-code.success { border-left: 4px solid #4CAF50; }
+        .response-code.redirect { border-left: 4px solid #2196F3; }
+        .response-code.client-error { border-left: 4px solid #FF9800; }
+        .response-code.server-error { border-left: 4px solid #F44336; }
+
+        .network-breakdown {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 15px;
+        }
+
+        .network-stat {
+            text-align: center;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            flex: 1;
+            margin: 0 5px;
+        }
+
+        .network-stat .value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .network-stat .label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        .error-list {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+
+        .error-item {
+            background: rgba(244, 67, 54, 0.1);
+            border-left: 4px solid #F44336;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+
+        .warning-item {
+            background: rgba(255, 152, 0, 0.1);
+            border-left: 4px solid #FF9800;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+
+        .issues-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 15px;
+        }
+
+        .issues-column {
+            min-height: 200px;
+        }
+
+        .issues-header {
+            font-size: 1rem;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .warning-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .last-updated {
+            text-align: center;
+            margin-top: 30px;
+            opacity: 0.7;
+            font-size: 0.9rem;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 50px;
+            font-size: 1.2rem;
+        }
+
+        .error-message {
+            background: rgba(244, 67, 54, 0.2);
+            border: 1px solid #F44336;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .metric-card.wide {
+                grid-column: span 1;
+            }
+            
+            .status-bar {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .network-breakdown {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .network-stat {
+                margin: 5px 0;
+            }
+            
+            .issues-grid {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🕷️ Noctipede Combined Dashboard</h1>
+            <div class="subtitle">Deep Web Analysis System - Enhanced Monitoring</div>
+        </div>
+
+        <div class="dashboard-nav">
+            <a href="/" class="nav-link">🏠 Basic Dashboard</a>
+            <a href="/enhanced" class="nav-link">⚡ Enhanced Dashboard</a>
+            <a href="/combined" class="nav-link active">🔗 Combined Dashboard</a>
+            <a href="/ai-reports" class="nav-link">🤖 AI Reports</a>
+        </div>
+        
+        <div class="status-bar">
+            <div class="status-indicator">
+                <div class="status-dot status-unknown" id="system-status"></div>
+                <span>System</span>
+            </div>
+            <div class="status-indicator">
+                <div class="status-dot status-unknown" id="database-status"></div>
+                <span>Database</span>
+            </div>
+            <div class="status-indicator">
+                <div class="status-dot status-unknown" id="crawler-status"></div>
+                <span>Crawler</span>
+            </div>
+            <div class="status-indicator">
+                <div class="status-dot status-unknown" id="ollama-status"></div>
+                <span>AI Services</span>
+            </div>
+            <div class="status-indicator">
+                <div class="status-dot status-unknown" id="network-status"></div>
+                <span>Network</span>
+            </div>
+        </div>
+
+        <div id="loading" class="loading">
+            🔄 Loading metrics...
+        </div>
+
+        <div id="error-container" class="error-message" style="display: none;">
+            <h3>⚠️ Error Loading Metrics</h3>
+            <p id="error-message"></p>
+        </div>
+
+        <div id="metrics-container" style="display: none;">
+            <div class="metrics-grid">
+                <!-- System Metrics -->
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="card-title">🖥️ System Resources</div>
+                        <div class="status-dot status-unknown" id="system-indicator"></div>
+                    </div>
+                    <div class="metric-label">CPU Usage</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="cpu-progress"></div>
+                    </div>
+                    <div class="metric-value" id="cpu-usage">0%</div>
+                    
+                    <div class="metric-label">Memory Usage</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="memory-progress"></div>
+                    </div>
+                    <div class="metric-value" id="memory-usage">0%</div>
+                    
+                    <div class="metric-label">Disk Usage</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="disk-progress"></div>
+                    </div>
+                    <div class="metric-value" id="disk-usage">0%</div>
+                </div>
+
+                <!-- Crawler Performance -->
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="card-title">🕷️ Crawler Performance</div>
+                        <div class="status-dot status-unknown" id="crawler-indicator"></div>
+                    </div>
+                    <div class="metric-label">Success Rate (24h)</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="success-progress"></div>
+                    </div>
+                    <div class="metric-value" id="success-rate">0%</div>
+                    
+                    <ul class="metric-list">
+                        <li>
+                            <span>Total Requests</span>
+                            <span id="total-requests">0</span>
+                        </li>
+                        <li>
+                            <span>Successful</span>
+                            <span id="successful-requests">0</span>
+                        </li>
+                        <li>
+                            <span>Avg Response Time</span>
+                            <span id="avg-response-time">0ms</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Network Breakdown -->
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="card-title">🌐 Network Distribution</div>
+                        <div class="status-dot status-unknown" id="network-indicator"></div>
+                    </div>
+                    <div class="network-breakdown">
+                        <div class="network-stat">
+                            <div class="value" id="clearnet-count">0</div>
+                            <div class="label">Clearnet</div>
+                        </div>
+                        <div class="network-stat">
+                            <div class="value" id="tor-count">0</div>
+                            <div class="label">🧅 Tor</div>
+                        </div>
+                        <div class="network-stat">
+                            <div class="value" id="i2p-count">0</div>
+                            <div class="label">🌐 I2P</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- HTTP Response Codes -->
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="card-title">📊 HTTP Response Codes</div>
+                    </div>
+                    <div class="response-codes" id="response-codes">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Database Stats -->
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="card-title">🗄️ Database</div>
+                        <div class="status-dot status-unknown" id="database-indicator"></div>
+                    </div>
+                    <ul class="metric-list">
+                        <li>
+                            <span>Sites</span>
+                            <span id="sites-count">0</span>
+                        </li>
+                        <li>
+                            <span>Pages</span>
+                            <span id="pages-count">0</span>
+                        </li>
+                        <li>
+                            <span>Media Files</span>
+                            <span id="media-count">0</span>
+                        </li>
+                        <li>
+                            <span>Database Size</span>
+                            <span id="db-size">0 MB</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- AI Services -->
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="card-title">🤖 AI Services</div>
+                        <div class="status-dot status-unknown" id="ollama-indicator"></div>
+                    </div>
+                    <ul class="metric-list">
+                        <li>
+                            <span>Connection</span>
+                            <span id="ollama-connection">Unknown</span>
+                        </li>
+                        <li>
+                            <span>Models Available</span>
+                            <span id="ollama-models">0</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Recent Issues - Enhanced with 2 columns -->
+                <div class="metric-card wide">
+                    <div class="card-header">
+                        <div class="card-title">⚠️ Recent Issues</div>
+                    </div>
+                    <div class="issues-grid">
+                        <div class="issues-column">
+                            <h4 class="issues-header">🚨 Errors</h4>
+                            <div class="error-list" id="recent-errors">
+                                <div style="text-align: center; opacity: 0.7;">No recent errors</div>
+                            </div>
+                        </div>
+                        <div class="issues-column">
+                            <h4 class="issues-header">⚠️ Warnings</h4>
+                            <div class="warning-list" id="recent-warnings">
+                                <div style="text-align: center; opacity: 0.7;">No recent warnings</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Top Domains -->
+                <div class="metric-card wide">
+                    <div class="card-header">
+                        <div class="card-title">🏆 Top Domains (24h)</div>
+                    </div>
+                    <ul class="metric-list" id="top-domains">
+                        <li style="text-align: center; opacity: 0.7;">No data available</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="last-updated">
+            Last updated: <span id="last-updated">Never</span>
+        </div>
+    </div>
+
+    <script>
+        let metricsData = {};
+        let updateInterval;
+
+        async function fetchMetrics() {
+            try {
+                const response = await fetch('/api/metrics');
+                const data = await response.json();
+                
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+                
+                metricsData = data;
+                updateDashboard();
+                hideError();
+                updateLastUpdated(data.timestamp);
+                
+            } catch (error) {
+                console.error('Error fetching metrics:', error);
+                showError('Failed to fetch metrics data: ' + error.message);
+            }
+        }
+
+        function updateDashboard() {
+            hideLoading();
+            showMetrics();
+            
+            // Update status indicators
+            updateStatusIndicators();
+            
+            // Update system metrics
+            updateSystemMetrics();
+            
+            // Update crawler metrics
+            updateCrawlerMetrics();
+            
+            // Update database metrics
+            updateDatabaseMetrics();
+            
+            // Update AI services
+            updateOllamaMetrics();
+            
+            // Update response codes
+            updateResponseCodes();
+            
+            // Update network breakdown
+            updateNetworkBreakdown();
+            
+            // Update recent issues (errors and warnings)
+            updateRecentIssues();
+            
+            // Update top domains
+            updateTopDomains();
+        }
+
+        function updateStatusIndicators() {
+            // Fix: Use defensive logic for Ollama status like Enhanced Dashboard
+            let ollamaStatus = metricsData.ollama?.status || 'unknown';
+            if (metricsData.services?.ollama?.status === 'unhealthy' && ollamaStatus === 'healthy') {
+                // Use individual status when services status is wrong
+                ollamaStatus = metricsData.ollama.status;
+            }
+            
+            // Determine database status from services or database metrics
+            let databaseStatus = 'unknown';
+            if (metricsData.services?.database?.status) {
+                databaseStatus = metricsData.services.database.status;
+            } else if (metricsData.database?.pressure?.status) {
+                databaseStatus = metricsData.database.pressure.status === 'normal' ? 'healthy' : 'warning';
+            } else if (metricsData.database?.size?.total_mb > 0) {
+                databaseStatus = 'healthy';
+            }
+            
+            // Fix: Determine crawler status based on performance metrics
+            let crawlerStatus = 'unknown';
+            const performance = metricsData.crawler?.performance || {};
+            if (performance.hit_rate_percent >= 90) {
+                crawlerStatus = 'healthy';
+            } else if (performance.hit_rate_percent >= 70) {
+                crawlerStatus = 'warning';
+            } else if (performance.hit_rate_percent > 0) {
+                crawlerStatus = 'error';
+            }
+            
+            const indicators = {
+                'system-status': metricsData.system?.status || 'unknown',
+                'database-status': databaseStatus,
+                'crawler-status': crawlerStatus,
+                'ollama-status': ollamaStatus,
+                'network-status': getNetworkStatus()
+            };
+            
+            Object.entries(indicators).forEach(([id, status]) => {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.className = `status-dot status-${status}`;
+                }
+            });
+        }
+
+        function getNetworkStatus() {
+            // Fix: Use evidence-based network status (successful crawls prove proxies work)
+            const networkBreakdown = metricsData.crawler?.network_breakdown || {};
+            const network = metricsData.network || {};
+            
+            // Evidence: If sites were crawled, the proxy works
+            const torWorking = (networkBreakdown.tor > 0) || (network.tor?.status === 'connected');
+            const i2pWorking = (networkBreakdown.i2p > 0) || (network.i2p?.status === 'healthy');
+            
+            if (torWorking && i2pWorking) return 'healthy';
+            if (torWorking || i2pWorking) return 'warning';
+            return 'error';
+        }
+
+        function updateSystemMetrics() {
+            const system = metricsData.system || {};
+            
+            // Fix: Use correct field names that match API response
+            if (system.cpu) {
+                const cpuPercent = system.cpu.percent || 0; // API provides 'percent', not 'usage_percent'
+                updateProgressBar('cpu-progress', cpuPercent);
+                updateElement('cpu-usage', `${cpuPercent}%`);
+            }
+            
+            if (system.memory) {
+                const memoryPercent = system.memory.percent || 0; // API provides 'percent', not 'usage_percent'
+                updateProgressBar('memory-progress', memoryPercent);
+                updateElement('memory-usage', `${memoryPercent}%`);
+            }
+            
+            if (system.disk) {
+                const diskPercent = system.disk.percent || 0; // API provides 'percent', not 'usage_percent'
+                updateProgressBar('disk-progress', diskPercent);
+                updateElement('disk-usage', `${diskPercent}%`);
+            }
+            
+            updateIndicator('system-indicator', system.status);
+        }
+
+        function updateCrawlerMetrics() {
+            // Fix: Use same parameter structure as Enhanced Dashboard
+            const crawler = metricsData.crawler || {};
+            const performance = crawler.performance || {};
+            
+            // Fix: Use hit_rate_percent with proper fallback logic
+            const successRate = performance.hit_rate_percent || 0;
+            updateProgressBar('success-progress', successRate);
+            updateElement('success-rate', `${successRate}%`);
+            
+            updateElement('total-requests', performance.total_requests_24h || 0);
+            updateElement('successful-requests', performance.successful_requests_24h || 0);
+            updateElement('avg-response-time', `${Math.round(performance.avg_response_time_ms || 0)}ms`);
+            
+            // Fix: Determine crawler status based on performance metrics
+            let crawlerStatus = 'unknown';
+            if (performance.hit_rate_percent >= 90) {
+                crawlerStatus = 'healthy';
+            } else if (performance.hit_rate_percent >= 70) {
+                crawlerStatus = 'warning';
+            } else if (performance.hit_rate_percent > 0) {
+                crawlerStatus = 'error';
+            }
+            
+            updateIndicator('crawler-indicator', crawlerStatus);
+        }
+
+        function updateDatabaseMetrics() {
+            const database = metricsData.database || {};
+            
+            // Extract table counts from the size.tables array structure
+            const tablesArray = database.size?.tables || [];
+            let sitesCount = 0, pagesCount = 0, mediaCount = 0;
+            
+            tablesArray.forEach(table => {
+                if (table.name === 'sites') sitesCount = table.rows;
+                else if (table.name === 'pages') pagesCount = table.rows;
+                else if (table.name === 'media_files') mediaCount = table.rows;
+            });
+            
+            updateElement('sites-count', sitesCount);
+            updateElement('pages-count', pagesCount);
+            updateElement('media-count', mediaCount);
+            updateElement('db-size', `${database.size?.total_mb || 0} MB`);
+            
+            // Determine database status based on available data
+            let dbStatus = 'healthy';
+            if (database.pressure?.status) {
+                dbStatus = database.pressure.status === 'normal' ? 'healthy' : 'warning';
+            } else if (database.size?.total_mb > 0) {
+                dbStatus = 'healthy';
+            } else {
+                dbStatus = 'unknown';
+            }
+            
+            updateIndicator('database-indicator', dbStatus);
+        }
+
+        function updateOllamaMetrics() {
+            const ollama = metricsData.ollama || {};
+            
+            // Fix: Ensure we use individual Ollama status (defensive fix)
+            let ollamaStatus = ollama.status;
+            if (!ollamaStatus || ollamaStatus === 'unhealthy') {
+                // Fallback to individual Ollama status if services status is wrong
+                ollamaStatus = metricsData.ollama?.status || 'unknown';
+            }
+            
+            // Fix: Use status-based connection logic like Enhanced Dashboard
+            const isConnected = ollamaStatus === 'healthy' || ollama.status === 'healthy';
+            updateElement('ollama-connection', isConnected ? 'Connected' : 'Disconnected');
+            updateElement('ollama-models', ollama.models?.count || ollama.models_available || 0);
+            
+            updateIndicator('ollama-indicator', ollamaStatus);
+        }
+
+        function updateResponseCodes() {
+            const crawler = metricsData.crawler || {};
+            const responseCodes = crawler.response_codes || {};
+            const container = document.getElementById('response-codes');
+            
+            container.innerHTML = '';
+            
+            Object.entries(responseCodes).forEach(([code, count]) => {
+                const div = document.createElement('div');
+                div.className = `response-code ${getResponseCodeClass(code)}`;
+                div.innerHTML = `
+                    <div style="font-size: 1.2rem; font-weight: bold;">${code}</div>
+                    <div style="font-size: 0.9rem;">${count}</div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function getResponseCodeClass(code) {
+            const codeNum = parseInt(code);
+            if (codeNum >= 200 && codeNum < 300) return 'success';
+            if (codeNum >= 300 && codeNum < 400) return 'redirect';
+            if (codeNum >= 400 && codeNum < 500) return 'client-error';
+            if (codeNum >= 500) return 'server-error';
+            return '';
+        }
+
+        function updateNetworkBreakdown() {
+            const crawler = metricsData.crawler || {};
+            const networkBreakdown = crawler.network_breakdown || {};
+            
+            updateElement('clearnet-count', networkBreakdown.clearnet || 0);
+            updateElement('tor-count', networkBreakdown.tor || 0);
+            updateElement('i2p-count', networkBreakdown.i2p || 0);
+            
+            // Update network status based on connectivity
+            const network = metricsData.network || {};
+            updateIndicator('network-indicator', getNetworkStatus());
+        }
+
+        function updateRecentIssues() {
+            const crawler = metricsData.crawler || {};
+            const errors = crawler.errors?.recent_errors || [];
+            const logErrors = crawler.log_analysis?.recent_errors || [];
+            const logWarnings = crawler.log_analysis?.recent_warnings || [];
+            
+            const errorsContainer = document.getElementById('recent-errors');
+            const warningsContainer = document.getElementById('recent-warnings');
+            
+            // Update Errors Column
+            const allErrors = [...errors, ...logErrors].slice(0, 8); // Show up to 8 errors
+            
+            if (allErrors.length === 0) {
+                errorsContainer.innerHTML = '<div style="text-align: center; opacity: 0.7;">No recent errors</div>';
+            } else {
+                errorsContainer.innerHTML = allErrors.map(error => {
+                    if (typeof error === 'string') {
+                        return `<div class="error-item">${error}</div>`;
+                    } else {
+                        return `<div class="error-item">
+                            <strong>${error.url || 'Unknown URL'}</strong><br>
+                            ${error.error || error.message || 'Unknown error'}<br>
+                            <small>Count: ${error.error_count || 1}</small>
+                        </div>`;
+                    }
+                }).join('');
+            }
+            
+            // Update Warnings Column
+            const allWarnings = [...logWarnings].slice(0, 8); // Show up to 8 warnings
+            
+            if (allWarnings.length === 0) {
+                warningsContainer.innerHTML = '<div style="text-align: center; opacity: 0.7;">No recent warnings</div>';
+            } else {
+                warningsContainer.innerHTML = allWarnings.map(warning => {
+                    if (typeof warning === 'string') {
+                        return `<div class="warning-item">${warning}</div>`;
+                    } else {
+                        return `<div class="warning-item">
+                            <strong>${warning.url || 'System Warning'}</strong><br>
+                            ${warning.message || warning}<br>
+                            <small>${warning.timestamp || 'Recent'}</small>
+                        </div>`;
+                    }
+                }).join('');
+            }
+        }
+
+        function updateTopDomains() {
+            const crawler = metricsData.crawler || {};
+            const topDomains = crawler.real_time?.top_domains || [];
+            const container = document.getElementById('top-domains');
+            
+            if (topDomains.length === 0) {
+                container.innerHTML = '<li style="text-align: center; opacity: 0.7;">No data available</li>';
+                return;
+            }
+            
+            container.innerHTML = topDomains.map(domain => `
+                <li>
+                    <span>${domain.domain}</span>
+                    <span>${domain.page_count} pages</span>
+                </li>
+            `).join('');
+        }
+
+        function updateProgressBar(id, percentage) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.style.width = `${Math.min(percentage, 100)}%`;
+                
+                // Update color based on percentage
+                element.className = 'progress-fill';
+                if (percentage > 80) {
+                    element.classList.add('error');
+                } else if (percentage > 60) {
+                    element.classList.add('warning');
+                }
+            }
+        }
+
+        function updateElement(id, value) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.textContent = value;
+            }
+        }
+
+        function updateIndicator(id, status) {
+            const element = document.getElementById(id);
+            if (element) {
+                element.className = `status-dot status-${status || 'unknown'}`;
+            }
+        }
+
+        function updateLastUpdated(timestamp) {
+            const element = document.getElementById('last-updated');
+            if (element && timestamp) {
+                const date = new Date(timestamp);
+                element.textContent = date.toLocaleString();
+            }
+        }
+
+        function showError(message) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('metrics-container').style.display = 'none';
+            document.getElementById('error-container').style.display = 'block';
+            document.getElementById('error-message').textContent = message;
+        }
+
+        function hideError() {
+            document.getElementById('error-container').style.display = 'none';
+        }
+
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('metrics-container').style.display = 'none';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        function showMetrics() {
+            document.getElementById('metrics-container').style.display = 'block';
+        }
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            fetchMetrics();
+            updateInterval = setInterval(fetchMetrics, 30000); // Update every 30 seconds
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            if (updateInterval) {
+                clearInterval(updateInterval);
+            }
+        });
+    </script>
+</body>
+</html>

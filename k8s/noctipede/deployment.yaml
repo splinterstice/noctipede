@@ -5,6 +5,7 @@ metadata:
   namespace: noctipede
   labels:
     app: noctipede-app
+    component: crawler
 spec:
   replicas: 1
   selector:
@@ -14,13 +15,97 @@ spec:
     metadata:
       labels:
         app: noctipede-app
+        component: crawler
     spec:
+      initContainers:
+      # Initialize sites.txt file
+      - name: init-sites-data
+        image: busybox:1.35
+        command: ['/bin/sh', '-c']
+        args:
+        - |
+          echo "🔧 Creating sites.txt file..."
+          cat > /data/sites.txt << 'EOF'
+          https://httpbin.org/
+          https://example.com/
+          https://httpbin.org/json
+          https://httpbin.org/html
+          https://httpbin.org/robots.txt
+          EOF
+          echo "✅ sites.txt created with $(wc -l < /data/sites.txt) sites"
+          ls -la /data/
+          cat /data/sites.txt
+        volumeMounts:
+        - name: data-volume
+          mountPath: /data
+      # Fix permissions for log directory
+      - name: fix-log-permissions
+        image: busybox:1.35
+        command: ['/bin/sh', '-c']
+        args:
+        - |
+          echo "🔧 Fixing log directory permissions..."
+          mkdir -p /app/logs /app/output
+          chmod 777 /app/logs /app/output
+          echo "✅ Permissions fixed"
+        volumeMounts:
+        - name: logs-volume
+          mountPath: /app/logs
+        - name: output-volume
+          mountPath: /app/output
+      # Simple proxy health monitoring using nc
+      - name: wait-for-proxies
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          set -eux
+          echo "🔍 Starting proxy health checks..."
+          
+          # Test Tor proxy - just check if SOCKS5 port is responding
+          echo "🧅 Testing Tor proxy..."
+          tor_ready=false
+          for attempt in $(seq 1 5); do
+            echo "Tor test attempt $attempt/5..."
+            if nc -z tor-proxy 9150 >/dev/null 2>&1; then
+              echo "✅ Tor proxy port responding!"
+              tor_ready=true
+              break
+            fi
+            echo "⏳ Waiting for Tor proxy..."
+            sleep 10
+          done
+          
+          if [ "$tor_ready" = "false" ]; then
+            echo "❌ Tor proxy port not responding after 5 attempts"
+            exit 1
+          fi
+          
+          # Test I2P proxy - check console port
+          echo "🌐 Testing I2P proxy..."
+          i2p_ready=false
+          for attempt in $(seq 1 3); do
+            echo "I2P test attempt $attempt/3..."
+            if nc -z i2p-proxy 7070 >/dev/null 2>&1; then
+              echo "✅ I2P console responding!"
+              i2p_ready=true
+              break
+            fi
+            echo "⏳ Waiting for I2P..."
+            sleep 15
+          done
+          
+          if [ "$i2p_ready" = "false" ]; then
+            echo "⚠️  I2P not ready yet (normal - can take 10+ minutes to bootstrap)"
+            echo "🔄 Continuing anyway - applications will handle I2P gracefully"
+          fi
+          
+          echo "🎉 Proxy health checks completed!"
       containers:
       - name: noctipede-app
-        image: noctipede:latest
-        imagePullPolicy: IfNotPresent
-        ports:
-        - containerPort: 8080
+        image: ghcr.io/splinterstice/noctipede:latest
+        imagePullPolicy: Always
+        command: ["sh", "-c", "cd /app && PYTHONPATH=/app python -m crawlers.main"]
         envFrom:
         - configMapRef:
             name: noctipede-config
@@ -41,52 +126,105 @@ spec:
             cpu: 2000m
             memory: 4Gi
         livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 5
+          exec:
+            command:
+            - pgrep
+            - -f
+            - "python.*crawlers.main"
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
       volumes:
       - name: data-volume
         persistentVolumeClaim:
-          claimName: noctipede-data-pvc
+          claimName: noctipede-sites-pvc
       - name: output-volume
         persistentVolumeClaim:
           claimName: noctipede-output-pvc
       - name: logs-volume
         persistentVolumeClaim:
           claimName: noctipede-logs-pvc
+      restartPolicy: Always
+
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: noctipede-web
+  name: noctipede-portal
   namespace: noctipede
   labels:
-    app: noctipede-web
+    app: noctipede-portal
+    component: web
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: noctipede-web
+      app: noctipede-portal
   template:
     metadata:
       labels:
-        app: noctipede-web
+        app: noctipede-portal
+        component: web
     spec:
+      initContainers:
+      # Simple proxy health monitoring using nc
+      - name: wait-for-proxies
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          set -eux
+          echo "🔍 Starting proxy health checks..."
+          
+          # Test Tor proxy - just check if SOCKS5 port is responding
+          echo "🧅 Testing Tor proxy..."
+          tor_ready=false
+          for attempt in $(seq 1 5); do
+            echo "Tor test attempt $attempt/5..."
+            if nc -z tor-proxy 9150 >/dev/null 2>&1; then
+              echo "✅ Tor proxy port responding!"
+              tor_ready=true
+              break
+            fi
+            echo "⏳ Waiting for Tor proxy..."
+            sleep 10
+          done
+          
+          if [ "$tor_ready" = "false" ]; then
+            echo "❌ Tor proxy port not responding after 5 attempts"
+            exit 1
+          fi
+          
+          # Test I2P proxy - check console port
+          echo "🌐 Testing I2P proxy..."
+          i2p_ready=false
+          for attempt in $(seq 1 3); do
+            echo "I2P test attempt $attempt/3..."
+            if nc -z i2p-proxy 7070 >/dev/null 2>&1; then
+              echo "✅ I2P console responding!"
+              i2p_ready=true
+              break
+            fi
+            echo "⏳ Waiting for I2P..."
+            sleep 15
+          done
+          
+          if [ "$i2p_ready" = "false" ]; then
+            echo "⚠️  I2P not ready yet (normal - can take 10+ minutes to bootstrap)"
+            echo "🔄 Continuing anyway - portal will handle I2P gracefully"
+          fi
+          
+          echo "🎉 Proxy health checks completed!"
       containers:
-      - name: noctipede-web
-        image: noctipede:latest
-        imagePullPolicy: IfNotPresent
+      - name: noctipede-portal
+        image: ghcr.io/splinterstice/noctipede:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
-        command: ["python", "-m", "noctipede.api.main"]
+          name: http
+          protocol: TCP
+        command: ["sh", "-c", "cd /app && PYTHONPATH=/app uvicorn portal.main_enhanced:app --host 0.0.0.0 --port 8080"]
         envFrom:
         - configMapRef:
             name: noctipede-config
@@ -106,16 +244,20 @@ spec:
             memory: 2Gi
         livenessProbe:
           httpGet:
-            path: /health
+            path: /api/health
             port: 8080
           initialDelaySeconds: 30
-          periodSeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /ready
+            path: /api/health
             port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 5
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
       volumes:
       - name: output-volume
         persistentVolumeClaim:
@@ -123,3 +265,4 @@ spec:
       - name: logs-volume
         persistentVolumeClaim:
           claimName: noctipede-logs-pvc
+      restartPolicy: Always
