@@ -1,0 +1,50 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: noctipede-portal-ingress
+  namespace: noctipede
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.middlewares: default-headers@kubernetescrd
+spec:
+  rules:
+  - host: noctipede.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-portal-service
+            port:
+              number: 8080
+  - host: noctipede-portal.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-portal-service
+            port:
+              number: 8080
+---
+# Also create an ingress for direct IP access
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: noctipede-portal-ip-ingress
+  namespace: noctipede
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /noctipede
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-portal-service
+            port:
+              number: 8080

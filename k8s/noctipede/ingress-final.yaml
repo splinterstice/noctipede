@@ -1,0 +1,97 @@
+---
+# Main Ingress for Noctipede Portal with hostname
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: noctipede-portal-main
+  namespace: noctipede
+  labels:
+    app: noctipede-portal
+    component: web
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  rules:
+  # Local hostname access
+  - host: noctipede.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-portal-service
+            port:
+              number: 8080
+  - host: noctipede-portal.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-portal-service
+            port:
+              number: 8080
+
+---
+# Path-based Ingress with proper rewriting
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: noctipede-portal-path
+  namespace: noctipede
+  labels:
+    app: noctipede-portal
+    component: web
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.middlewares: noctipede-stripprefix@kubernetescrd
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /noctipede
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-portal-service
+            port:
+              number: 8080
+
+---
+# Middleware to strip the /noctipede prefix
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: noctipede-stripprefix
+  namespace: noctipede
+spec:
+  stripPrefix:
+    prefixes:
+      - /noctipede
+
+---
+# Simple root path ingress for direct IP access
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: noctipede-portal-root
+  namespace: noctipede
+  labels:
+    app: noctipede-portal
+    component: web
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.priority: "1"
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-portal-service
+            port:
+              number: 8080
