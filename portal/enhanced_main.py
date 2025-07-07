@@ -42,9 +42,24 @@ if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request):
-    """Main dashboard page"""
+async def basic_dashboard(request: Request):
+    """Basic dashboard page"""
+    return templates.TemplateResponse("dashboard.html", {"request": request})
+
+@app.get("/enhanced", response_class=HTMLResponse)
+async def enhanced_dashboard(request: Request):
+    """Enhanced dashboard page"""
     return templates.TemplateResponse("enhanced_dashboard.html", {"request": request})
+
+@app.get("/combined", response_class=HTMLResponse)
+async def combined_dashboard(request: Request):
+    """Combined dashboard page"""
+    return templates.TemplateResponse("combined_dashboard.html", {"request": request})
+
+@app.get("/ai-reports", response_class=HTMLResponse)
+async def ai_reports(request: Request):
+    """AI reports page"""
+    return templates.TemplateResponse("ai_reports.html", {"request": request})
 
 @app.get("/api/metrics")
 async def get_metrics():

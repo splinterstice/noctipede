@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noctipede-app
+  namespace: noctipede
+  labels:
+    app: noctipede-app
+    component: crawler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noctipede-app
+      component: crawler
+  template:
+    metadata:
+      labels:
+        app: noctipede-app
+        component: crawler
+    spec:
+      containers:
+      - name: noctipede-app
+        image: ghcr.io/splinterstice/noctipede:latest
+        imagePullPolicy: Always
+        command: ["sh", "-c", "cd /app && mkdir -p /app/data /app/output /app/logs && echo 'https://httpbin.org/' > /app/data/sites.txt && echo 'https://example.com/' >> /app/data/sites.txt && echo 'https://httpbin.org/json' >> /app/data/sites.txt && PYTHONPATH=/app python -m crawlers.main"]
+        envFrom:
+        - configMapRef:
+            name: noctipede-config
+        - secretRef:
+            name: noctipede-secrets
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 10
+          periodSeconds: 10
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noctipede-portal
+  namespace: noctipede
+  labels:
+    app: noctipede-portal
+    component: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noctipede-portal
+      component: web
+  template:
+    metadata:
+      labels:
+        app: noctipede-portal
+        component: web
+    spec:
+      containers:
+      - name: noctipede-portal
+        image: ghcr.io/splinterstice/noctipede:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        command: ["sh", "-c", "cd /app && mkdir -p /tmp/output /tmp/logs && PYTHONPATH=/app OUTPUT_DIR=/tmp/output python -m portal.enhanced_portal"]
+        envFrom:
+        - configMapRef:
+            name: noctipede-config
+        - secretRef:
+            name: noctipede-secrets
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10

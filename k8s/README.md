@@ -67,7 +67,7 @@ k8s/
 ```yaml
 # Network Configuration - Updated for K8s proxy services
 TOR_PROXY_HOST: "tor-proxy"      # Was: 127.0.0.1
-TOR_PROXY_PORT: "9050"
+TOR_PROXY_PORT: "9150"
 I2P_PROXY_HOST: "i2p-proxy"     # Was: 127.0.0.1
 I2P_PROXY_PORT: "4444"
 ```
@@ -81,7 +81,7 @@ metadata:
   name: tor-proxy
 spec:
   ports:
-  - port: 9050
+  - port: 9150
     name: socks-proxy
 
 # I2P Proxy Service  
@@ -116,7 +116,7 @@ initContainers:
 - name: wait-for-tor-proxy
   image: busybox:1.35
   command: ['sh', '-c']
-  args: ['until nc -z tor-proxy 9050; do sleep 5; done']
+  args: ['until nc -z tor-proxy 9150; do sleep 5; done']
   
 - name: wait-for-i2p-proxy
   image: busybox:1.35
@@ -131,7 +131,7 @@ initContainers:
 - **Local Access**: `kubectl port-forward -n noctipede service/noctipede-portal-service 8080:8080`
 
 ### Proxy Services
-- **Tor Proxy**: `tor-proxy.noctipede:9050` (SOCKS5)
+- **Tor Proxy**: `tor-proxy.noctipede:9150` (SOCKS5)
 - **I2P Proxy**: `i2p-proxy.noctipede:4444` (HTTP)
 - **I2P Console**: `i2p-proxy.noctipede:7070` (Web UI)
 
@@ -151,7 +151,7 @@ kubectl logs -n noctipede deployment/i2p-proxy
 
 # Check proxy connectivity
 kubectl exec -n noctipede deployment/noctipede-portal -- curl -s http://i2p-proxy:4444
-kubectl exec -n noctipede deployment/noctipede-portal -- nc -z tor-proxy 9050
+kubectl exec -n noctipede deployment/noctipede-portal -- nc -z tor-proxy 9150
 ```
 
 ## 🔒 Security Considerations

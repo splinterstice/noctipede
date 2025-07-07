@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     ollama_endpoint: str = Field(env="OLLAMA_ENDPOINT")
     ollama_vision_model: str = Field(default="llama3.2-vision:11b", env="OLLAMA_VISION_MODEL")
     ollama_text_model: str = Field(default="gemma3:12b", env="OLLAMA_TEXT_MODEL")
-    ollama_moderation_model: str = Field(default="llama3.1:8b", env="OLLAMA_MODERATION_MODEL")
+    ollama_moderation_model: str = Field(default="gemma3:12b", env="OLLAMA_MODERATION_MODEL")
     
     # Crawler Configuration
     max_links_per_page: int = Field(default=500, env="MAX_LINKS_PER_PAGE")
@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         """Get the database connection URL."""
-        return f"mysql+pymysql://{self.mariadb_user}:{self.mariadb_password}@{self.mariadb_host}:{self.mariadb_port}/{self.mariadb_database}"
+        return f"mysql+pymysql://{self.mariadb_user}:{self.mariadb_password}@{self.mariadb_host}:{self.mariadb_port}/{self.mariadb_database}?charset=utf8mb4"
     
     @property
     def i2p_internal_proxies_list(self) -> List[str]:

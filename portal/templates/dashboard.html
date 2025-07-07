@@ -343,7 +343,7 @@
             try {
                 const response = await fetch('/api/metrics');
                 const data = await response.json();
-                metricsData = data.crawler;  // Fixed: use data.crawler instead of data.metrics
+                metricsData = data;  // Use the full data object to access all sections
                 updateDashboard();
                 updateLastUpdated(data.timestamp);
             } catch (error) {
@@ -353,11 +353,21 @@
         }
         
         function updateDashboard() {
-            // Update totals - map from current data structure
-            document.getElementById('total-sites').textContent = metricsData.progress?.total_sites || 0;
-            document.getElementById('total-pages').textContent = metricsData.real_time?.total_pages || 0;
-            document.getElementById('total-media').textContent = 0; // Not available in current structure
-            document.getElementById('recent-pages').textContent = metricsData.real_time?.pages_last_24h || metricsData.performance?.total_requests_24h || 0;
+            // Update totals - use correct data paths from API response
+            // Get sites count from database tables
+            const sitesTable = metricsData.database?.size?.tables?.find(table => table.name === 'sites');
+            document.getElementById('total-sites').textContent = sitesTable?.rows || 0;
+            
+            // Get pages count from database tables  
+            const pagesTable = metricsData.database?.size?.tables?.find(table => table.name === 'pages');
+            document.getElementById('total-pages').textContent = pagesTable?.rows || 0;
+            
+            // Get media files count from MinIO object storage (where media files are actually stored)
+            const mediaCount = metricsData.minio?.storage?.object_count || 0;
+            document.getElementById('total-media').textContent = mediaCount;
+            
+            // Use real-time data for recent pages (24h)
+            document.getElementById('recent-pages').textContent = metricsData.crawler?.real_time?.pages_last_24h || 0;
             
             // Update network chart
             updateNetworkChart();
@@ -374,7 +384,7 @@
         
         function updateNetworkChart() {
             const container = document.getElementById('network-chart');
-            const networks = metricsData.network_breakdown || {};
+            const networks = metricsData.crawler?.network_breakdown || {};
             
             if (Object.keys(networks).length === 0) {
                 container.innerHTML = '<div class="loading">No network data available</div>';
@@ -404,8 +414,8 @@
         
         function updateStatusChart() {
             const container = document.getElementById('status-chart');
-            // Map response codes to status breakdown
-            const responseCodes = metricsData.response_codes || {};
+            // Use response codes from crawler metrics
+            const responseCodes = metricsData.crawler?.response_codes || {};
             
             if (Object.keys(responseCodes).length === 0) {
                 container.innerHTML = '<div class="loading">No status data available</div>';
@@ -418,14 +428,15 @@
             for (const [status, count] of Object.entries(responseCodes)) {
                 const percentage = total > 0 ? (count / total * 100).toFixed(1) : 0;
                 const statusLabel = status === '200' ? 'Success' : status === '404' ? 'Not Found' : status === '500' ? 'Server Error' : `HTTP ${status}`;
+                const statusColor = status === '200' ? '#4CAF50' : status.startsWith('4') ? '#FF9800' : '#f44336';
                 html += `
                     <div style="margin-bottom: 15px;">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                            <span>${statusLabel}</span>
+                            <span style="color: ${statusColor};">${statusLabel}</span>
                             <span>${count} requests (${percentage}%)</span>
                         </div>
                         <div class="progress-bar">
-                            <div class="progress-fill" style="width: ${percentage}%"></div>
+                            <div class="progress-fill" style="width: ${percentage}%; background: ${statusColor};"></div>
                         </div>
                     </div>
                 `;
@@ -436,30 +447,51 @@
         
         function updateRecentActivity() {
             const container = document.getElementById('recent-activity');
-            // Use recent errors from log analysis or create placeholder activity
-            const recentErrors = metricsData.errors?.recent_errors || [];
-            const lastCrawl = metricsData.real_time?.last_crawl;
+            // Use recent errors from crawler metrics and real-time data
+            const recentErrors = metricsData.crawler?.errors?.recent_errors || [];
+            const lastCrawl = metricsData.crawler?.real_time?.last_crawl;
+            const pagesLastHour = metricsData.crawler?.real_time?.pages_last_hour || 0;
+            const avgResponseTime = metricsData.crawler?.real_time?.avg_response_time || 0;
             
             let html = '';
             
+            // Show recent crawl activity
             if (lastCrawl) {
                 html += `
-                    <div style="padding: 10px; border-left: 3px solid #4CAF50; margin-bottom: 10px; background: rgba(76, 175, 80, 0.1);">
-                        <div style="font-weight: bold; color: #4CAF50;">Recent Crawl Activity</div>
-                        <div style="font-size: 0.9rem; opacity: 0.8;">
-                            Last crawl: ${new Date(lastCrawl).toLocaleString()}
+                    <div class="activity-item">
+                        <div class="activity-url">🕷️ Recent Crawl Activity</div>
+                        <div class="activity-meta">
+                            Last crawl: ${new Date(lastCrawl).toLocaleString()}<br>
+                            Pages crawled in last hour: ${pagesLastHour}<br>
+                            Average response time: ${avgResponseTime.toFixed(2)}s
                         </div>
                     </div>
                 `;
             }
             
+            // Show performance metrics
+            const performance = metricsData.crawler?.performance;
+            if (performance) {
+                html += `
+                    <div class="activity-item">
+                        <div class="activity-url">📊 Performance Metrics</div>
+                        <div class="activity-meta">
+                            Hit rate: ${performance.hit_rate_percent}%<br>
+                            Successful requests (24h): ${performance.successful_requests_24h}<br>
+                            Average response time: ${performance.avg_response_time_ms}ms
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Show recent errors if any
             if (recentErrors.length > 0) {
                 recentErrors.slice(0, 3).forEach(error => {
                     html += `
-                        <div style="padding: 10px; border-left: 3px solid #f44336; margin-bottom: 10px; background: rgba(244, 67, 54, 0.1);">
-                            <div style="font-weight: bold; color: #f44336;">Error</div>
-                            <div style="font-size: 0.9rem; opacity: 0.8;">
-                                ${error.error || 'Unknown error'}
+                        <div class="activity-item" style="border-left-color: #f44336;">
+                            <div class="activity-url">❌ Error</div>
+                            <div class="activity-meta">
+                                ${error.error || error.message || 'Unknown error'}
                             </div>
                         </div>
                     `;
@@ -475,7 +507,7 @@
         
         function updateTopDomains() {
             const container = document.getElementById('top-domains');
-            const domains = metricsData.real_time?.top_domains || metricsData.top_domains || [];
+            const domains = metricsData.crawler?.real_time?.top_domains || [];
             
             if (domains.length === 0) {
                 container.innerHTML = '<div class="loading">No domain data available</div>';
@@ -485,12 +517,24 @@
             const maxCount = Math.max(...domains.map(d => d.page_count));
             let html = '';
             
-            domains.forEach((domain, index) => {
+            domains.slice(0, 10).forEach((domain, index) => {
                 const percentage = maxCount > 0 ? (domain.page_count / maxCount * 100) : 0;
+                // Determine network type from domain
+                let networkClass = 'clearnet';
+                if (domain.domain.endsWith('.onion')) {
+                    networkClass = 'tor';
+                } else if (domain.domain.endsWith('.i2p') || domain.domain.includes('.b32.i2p')) {
+                    networkClass = 'i2p';
+                }
+                
                 html += `
                     <div style="margin-bottom: 15px;">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                            <span><strong>#${index + 1}</strong> ${domain.domain}</span>
+                            <span>
+                                <strong>#${index + 1}</strong> 
+                                <span class="network-badge ${networkClass}">${networkClass.toUpperCase()}</span>
+                                ${domain.domain}
+                            </span>
                             <span>${domain.page_count} pages</span>
                         </div>
                         <div class="progress-bar">

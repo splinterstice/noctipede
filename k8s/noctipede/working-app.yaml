@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noctipede-app
+  namespace: noctipede
+  labels:
+    app: noctipede-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noctipede-app
+  template:
+    metadata:
+      labels:
+        app: noctipede-app
+    spec:
+      initContainers:
+      - name: wait-for-database
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for MariaDB to be ready..."
+          until nc -z mariadb 3306; do
+            echo "⏳ MariaDB not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ MariaDB is ready!"
+      - name: wait-for-minio
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for MinIO to be ready..."
+          until nc -z minio 9000; do
+            echo "⏳ MinIO not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ MinIO is ready!"
+      - name: init-directories
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔧 Creating directories and setting permissions..."
+          mkdir -p /app/logs /app/output /app/data
+          chmod 777 /app/logs /app/output /app/data
+          echo "✅ Directories initialized"
+        volumeMounts:
+        - name: log-data
+          mountPath: /app/logs
+        - name: output-data
+          mountPath: /app/output
+      containers:
+      - name: noctipede-app
+        image: ghcr.io/splinterstice/noctipede:latest
+        imagePullPolicy: Always
+        envFrom:
+        - configMapRef:
+            name: noctipede-config
+        - secretRef:
+            name: noctipede-secrets
+        env:
+        - name: MARIADB_HOST
+          value: "mariadb"
+        - name: WEB_SERVER_PORT
+          value: "8080"
+        - name: WEB_SERVER_HOST
+          value: "0.0.0.0"
+        ports:
+        - containerPort: 8080
+          name: http
+        volumeMounts:
+        - name: output-data
+          mountPath: /app/output
+        - name: log-data
+          mountPath: /app/logs
+        command: ["sh", "-c"]
+        args:
+        - |
+          echo "🚀 Starting Noctipede Web Application..."
+          cd /app
+          PYTHONPATH=/app python -m portal.enhanced_portal
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+      volumes:
+      - name: output-data
+        persistentVolumeClaim:
+          claimName: noctipede-output-pvc
+      - name: log-data
+        persistentVolumeClaim:
+          claimName: noctipede-logs-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: noctipede-app-service
+  namespace: noctipede
+  labels:
+    app: noctipede-app
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: noctipede-app

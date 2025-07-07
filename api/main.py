@@ -63,6 +63,14 @@ templates = Jinja2Templates(directory="/app/api/templates")
 app.include_router(router, prefix="/api/v1")
 app.include_router(analysis_router, prefix="/api")
 
+# Include Ollama stats router
+try:
+    from .ollama_stats import router as ollama_router
+    app.include_router(ollama_router)
+    logger.info("Ollama statistics endpoints enabled")
+except ImportError as e:
+    logger.warning(f"Ollama statistics endpoints not available: {e}")
+
 @app.get("/analysis", response_class=HTMLResponse)
 async def analysis_portal():
     """Serve the analysis portal page."""
@@ -72,6 +80,16 @@ async def analysis_portal():
     except Exception as e:
         logger.error(f"Error serving analysis portal: {e}")
         raise HTTPException(status_code=500, detail="Failed to load analysis portal")
+
+@app.get("/ollama-stats", response_class=HTMLResponse)
+async def ollama_stats_dashboard():
+    """Serve the Ollama statistics dashboard."""
+    try:
+        with open("/app/portal/templates/ollama_stats.html", "r") as f:
+            return HTMLResponse(content=f.read())
+    except Exception as e:
+        logger.error(f"Error serving Ollama stats dashboard: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load Ollama stats dashboard")
 
 # Mount static files
 try:

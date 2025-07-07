@@ -1,0 +1,93 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: test-i2p-crawler
+  namespace: noctipede
+spec:
+  template:
+    spec:
+      initContainers:
+      - name: wait-for-proxies
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for I2P proxy..."
+          until nc -z i2p-proxy 4444; do
+            echo "⏳ I2P proxy not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ I2P proxy is ready!"
+          
+          echo "🔍 Waiting for MariaDB..."
+          until nc -z mariadb 3306; do
+            echo "⏳ MariaDB not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ MariaDB is ready!"
+      containers:
+      - name: i2p-crawler
+        image: ghcr.io/splinterstice/noctipede:latest
+        env:
+        - name: MARIADB_HOST
+          value: "mariadb"
+        - name: MARIADB_PORT
+          value: "3306"
+        - name: MARIADB_USER
+          value: "splinter-research"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: MARIA_USER_PASSWORD
+        - name: MARIADB_DATABASE
+          value: "splinter-research"
+        - name: MINIO_ENDPOINT
+          value: "minio:9000"
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: access-key
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: secret-key
+        - name: MINIO_BUCKET_NAME
+          value: "noctipede-data"
+        - name: MINIO_SECURE
+          value: "false"
+        - name: OLLAMA_ENDPOINT
+          value: "http://host.docker.internal:11434"
+        - name: I2P_PROXY_HOST
+          value: "i2p-proxy"
+        - name: I2P_PROXY_PORT
+          value: "4444"
+        - name: SITES_FILE_PATH
+          value: "/app/test-sites/sites.txt"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: CONTENT_ANALYSIS_ENABLED
+          value: "false"
+        - name: IMAGE_ANALYSIS_ENABLED
+          value: "false"
+        volumeMounts:
+        - name: test-sites
+          mountPath: /app/test-sites
+        - name: output-data
+          mountPath: /app/output
+        - name: log-data
+          mountPath: /app/logs
+        command: ["python", "-m", "noctipede.crawlers.main"]
+      volumes:
+      - name: test-sites
+        configMap:
+          name: i2p-sites
+      - name: output-data
+        persistentVolumeClaim:
+          claimName: noctipede-output-pvc-rwx
+      - name: log-data
+        persistentVolumeClaim:
+          claimName: noctipede-logs-pvc-rwx
+      restartPolicy: Never

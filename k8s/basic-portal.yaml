@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noctipede-portal
+  namespace: noctipede
+  labels:
+    app: noctipede-portal
+    component: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noctipede-portal
+      component: web
+  template:
+    metadata:
+      labels:
+        app: noctipede-portal
+        component: web
+    spec:
+      containers:
+      - name: noctipede-portal
+        image: ghcr.io/splinterstice/noctipede:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        command: ["sh", "-c"]
+        args:
+        - |
+          echo "🌐 Starting Basic Noctipede Portal..."
+          cd /app
+          mkdir -p /tmp/output /tmp/logs
+          export OUTPUT_DIR=/tmp/output
+          # Skip database-heavy initialization
+          export SKIP_DB_INIT=true
+          export DISABLE_AI_REPORTS=true
+          PYTHONPATH=/app python -m portal.main
+        envFrom:
+        - configMapRef:
+            name: noctipede-config
+        - secretRef:
+            name: noctipede-secrets
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3

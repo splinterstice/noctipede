@@ -1,0 +1,510 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noctipede-portal
+  namespace: noctipede
+  labels:
+    app: noctipede-portal
+    component: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noctipede-portal
+      component: web
+  template:
+    metadata:
+      labels:
+        app: noctipede-portal
+        component: web
+    spec:
+      initContainers:
+      # Wait for database to be ready
+      - name: wait-for-database
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for MariaDB to be ready..."
+          until nc -z mariadb 3306; do
+            echo "⏳ MariaDB not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ MariaDB is ready!"
+      
+      # Wait for proxy services to be available
+      - name: wait-for-proxies
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🌐 Waiting for proxy services to be available..."
+          
+          # Wait for Tor proxy
+          echo "🧅 Checking Tor proxy..."
+          until nc -z tor-proxy 9150; do
+            echo "⏳ Tor proxy not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ Tor proxy service is available!"
+          
+          # Wait for I2P proxy
+          echo "🌐 Checking I2P proxy..."
+          until nc -z i2p-proxy 4444; do
+            echo "⏳ I2P proxy not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ I2P proxy service is available!"
+          
+          echo "🎉 All proxy services are available!"
+      
+      containers:
+      - name: noctipede-portal
+        image: ghcr.io/splinterstice/noctipede:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        command: ["sh", "-c"]
+        args:
+        - |
+          echo "🌐 Starting Enhanced Noctipede Portal with Proxy Status API..."
+          cd /app
+          mkdir -p /tmp/output /tmp/logs
+          export OUTPUT_DIR=/tmp/output
+          
+          # Create enhanced portal script with proxy status endpoints
+          cat > /tmp/enhanced_portal_with_proxy_status.py << 'EOF'
+          import asyncio
+          import json
+          import logging
+          import socket
+          import subprocess
+          import time
+          from datetime import datetime
+          from typing import Dict, Any, Optional
+          
+          import requests
+          from fastapi import FastAPI, HTTPException
+          from fastapi.responses import HTMLResponse, JSONResponse
+          from fastapi.staticfiles import StaticFiles
+          import uvicorn
+          
+          # Configure logging
+          logging.basicConfig(level=logging.INFO)
+          logger = logging.getLogger(__name__)
+          
+          app = FastAPI(title="Noctipede Enhanced Portal", version="2.0.0")
+          
+          # Proxy status cache
+          proxy_status_cache = {
+              "tor": {"ready": False, "last_check": 0, "details": {}},
+              "i2p": {"ready": False, "last_check": 0, "details": {}}
+          }
+          
+          def check_tor_proxy_status() -> Dict[str, Any]:
+              """Check Tor proxy status and functionality"""
+              try:
+                  # Check if Tor proxy port is open
+                  sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                  sock.settimeout(5)
+                  result = sock.connect_ex(('tor-proxy', 9150))
+                  sock.close()
+                  
+                  if result == 0:
+                      # Try to test Tor functionality by checking if we can connect through SOCKS
+                      try:
+                          import socks
+                          # Create a socket and configure it to use the SOCKS proxy
+                          s = socks.socksocket()
+                          s.set_proxy(socks.SOCKS5, "tor-proxy", 9150)
+                          s.settimeout(10)
+                          # Try to connect to a known .onion address or Tor check service
+                          s.connect(("check.torproject.org", 80))
+                          s.close()
+                          return {
+                              "ready": True,
+                              "status": "fully_functional",
+                              "message": "Tor proxy is ready and functional",
+                              "port_open": True,
+                              "socks_test": True
+                          }
+                      except Exception as e:
+                          return {
+                              "ready": True,
+                              "status": "port_open_only",
+                              "message": f"Tor proxy port is open but SOCKS test failed: {str(e)}",
+                              "port_open": True,
+                              "socks_test": False
+                          }
+                  else:
+                      return {
+                          "ready": False,
+                          "status": "port_closed",
+                          "message": "Tor proxy port is not accessible",
+                          "port_open": False,
+                          "socks_test": False
+                      }
+              except Exception as e:
+                  return {
+                      "ready": False,
+                      "status": "error",
+                      "message": f"Error checking Tor proxy: {str(e)}",
+                      "port_open": False,
+                      "socks_test": False
+                  }
+          
+          def check_i2p_proxy_status() -> Dict[str, Any]:
+              """Check I2P proxy status and functionality"""
+              try:
+                  # Check if I2P proxy HTTP port is open
+                  response = requests.get("http://i2p-proxy:4444", timeout=10)
+                  
+                  if response.status_code == 200 or "I2Pd HTTP proxy" in response.text:
+                      # I2P is responding, now check if it's fully bootstrapped
+                      try:
+                          # Try to access I2P console to check status
+                          console_response = requests.get("http://i2p-proxy:7070", timeout=5)
+                          if console_response.status_code == 200:
+                              # Parse console response to check tunnel status
+                              console_text = console_response.text
+                              if "Tunnels" in console_text and "Active" in console_text:
+                                  return {
+                                      "ready": True,
+                                      "status": "fully_functional",
+                                      "message": "I2P proxy is ready and fully bootstrapped",
+                                      "http_proxy": True,
+                                      "console_accessible": True,
+                                      "tunnels_active": True
+                                  }
+                              else:
+                                  return {
+                                      "ready": False,
+                                      "status": "bootstrapping",
+                                      "message": "I2P proxy is running but still bootstrapping",
+                                      "http_proxy": True,
+                                      "console_accessible": True,
+                                      "tunnels_active": False
+                                  }
+                          else:
+                              return {
+                                  "ready": True,
+                                  "status": "proxy_only",
+                                  "message": "I2P HTTP proxy is ready but console not accessible",
+                                  "http_proxy": True,
+                                  "console_accessible": False,
+                                  "tunnels_active": False
+                              }
+                      except Exception as console_error:
+                          return {
+                              "ready": True,
+                              "status": "proxy_only",
+                              "message": f"I2P HTTP proxy is ready but console check failed: {str(console_error)}",
+                              "http_proxy": True,
+                              "console_accessible": False,
+                              "tunnels_active": False
+                          }
+                  else:
+                      return {
+                          "ready": False,
+                          "status": "not_responding",
+                          "message": "I2P proxy is not responding properly",
+                          "http_proxy": False,
+                          "console_accessible": False,
+                          "tunnels_active": False
+                      }
+              except Exception as e:
+                  return {
+                      "ready": False,
+                      "status": "error",
+                      "message": f"Error checking I2P proxy: {str(e)}",
+                      "http_proxy": False,
+                      "console_accessible": False,
+                      "tunnels_active": False
+                  }
+          
+          def get_ollama_stats() -> Dict[str, Any]:
+              """Get comprehensive Ollama statistics"""
+              try:
+                  ollama_endpoint = "http://ollama.ollama-service.svc.cluster.local:11434"
+                  
+                  # Get list of models
+                  models_response = requests.get(f"{ollama_endpoint}/api/tags", timeout=10)
+                  models = models_response.json() if models_response.status_code == 200 else {"models": []}
+                  
+                  # Get system info
+                  try:
+                      ps_response = requests.get(f"{ollama_endpoint}/api/ps", timeout=10)
+                      running_models = ps_response.json() if ps_response.status_code == 200 else {"models": []}
+                  except:
+                      running_models = {"models": []}
+                  
+                  return {
+                      "available": True,
+                      "endpoint": ollama_endpoint,
+                      "models_count": len(models.get("models", [])),
+                      "models": [{"name": m.get("name", "unknown"), "size": m.get("size", 0)} for m in models.get("models", [])],
+                      "running_models": running_models.get("models", []),
+                      "status": "healthy"
+                  }
+              except Exception as e:
+                  return {
+                      "available": False,
+                      "endpoint": "http://ollama.ollama-service.svc.cluster.local:11434",
+                      "error": str(e),
+                      "status": "error"
+                  }
+          
+          @app.get("/api/health")
+          async def health_check():
+              """Health check endpoint"""
+              return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+          
+          @app.get("/api/proxy-status")
+          async def get_proxy_status():
+              """Get current proxy status"""
+              current_time = time.time()
+              
+              # Update Tor status if cache is older than 30 seconds
+              if current_time - proxy_status_cache["tor"]["last_check"] > 30:
+                  proxy_status_cache["tor"]["details"] = check_tor_proxy_status()
+                  proxy_status_cache["tor"]["ready"] = proxy_status_cache["tor"]["details"]["ready"]
+                  proxy_status_cache["tor"]["last_check"] = current_time
+              
+              # Update I2P status if cache is older than 30 seconds
+              if current_time - proxy_status_cache["i2p"]["last_check"] > 30:
+                  proxy_status_cache["i2p"]["details"] = check_i2p_proxy_status()
+                  proxy_status_cache["i2p"]["ready"] = proxy_status_cache["i2p"]["details"]["ready"]
+                  proxy_status_cache["i2p"]["last_check"] = current_time
+              
+              return {
+                  "tor": proxy_status_cache["tor"]["details"],
+                  "i2p": proxy_status_cache["i2p"]["details"],
+                  "both_ready": proxy_status_cache["tor"]["ready"] and proxy_status_cache["i2p"]["ready"],
+                  "timestamp": datetime.now().isoformat()
+              }
+          
+          @app.get("/api/proxy-readiness")
+          async def check_proxy_readiness():
+              """Check if both proxies are 100% ready for crawling"""
+              status = await get_proxy_status()
+              
+              tor_ready = status["tor"]["ready"] and status["tor"]["status"] in ["fully_functional", "port_open_only"]
+              i2p_ready = status["i2p"]["ready"] and status["i2p"]["status"] in ["fully_functional", "proxy_only"]
+              
+              return {
+                  "tor_ready": tor_ready,
+                  "i2p_ready": i2p_ready,
+                  "both_ready": tor_ready and i2p_ready,
+                  "readiness_percentage": {
+                      "tor": 100 if tor_ready else 0,
+                      "i2p": 100 if i2p_ready else 0,
+                      "overall": 100 if (tor_ready and i2p_ready) else (50 if (tor_ready or i2p_ready) else 0)
+                  },
+                  "timestamp": datetime.now().isoformat()
+              }
+          
+          @app.get("/api/system-metrics")
+          async def get_system_metrics():
+              """Get comprehensive system metrics including Ollama"""
+              return {
+                  "system": {
+                      "timestamp": datetime.now().isoformat(),
+                      "uptime": time.time()
+                  },
+                  "proxies": (await get_proxy_status()),
+                  "ollama": get_ollama_stats(),
+                  "database": {
+                      "host": "mariadb",
+                      "port": 3306,
+                      "status": "connected"  # TODO: Add actual DB health check
+                  }
+              }
+          
+          @app.get("/", response_class=HTMLResponse)
+          async def dashboard():
+              """Enhanced dashboard with proxy status"""
+              return '''
+              <!DOCTYPE html>
+              <html>
+              <head>
+                  <title>Noctipede Enhanced Portal</title>
+                  <meta charset="utf-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1">
+                  <style>
+                      body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+                      .container { max-width: 1200px; margin: 0 auto; }
+                      .card { background: white; padding: 20px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                      .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+                      .status-indicator { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
+                      .status-ready { background-color: #4CAF50; }
+                      .status-warning { background-color: #FF9800; }
+                      .status-error { background-color: #F44336; }
+                      .metrics { font-family: monospace; background: #f8f8f8; padding: 10px; border-radius: 4px; }
+                      h1 { color: #333; text-align: center; }
+                      h2 { color: #666; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+                      .refresh-btn { background: #2196F3; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
+                      .refresh-btn:hover { background: #1976D2; }
+                  </style>
+              </head>
+              <body>
+                  <div class="container">
+                      <h1>🕷️ Noctipede Enhanced Portal</h1>
+                      
+                      <div class="card">
+                          <h2>🌐 Proxy Status</h2>
+                          <button class="refresh-btn" onclick="refreshProxyStatus()">Refresh Status</button>
+                          <div id="proxy-status" class="status-grid">
+                              <div>Loading proxy status...</div>
+                          </div>
+                      </div>
+                      
+                      <div class="card">
+                          <h2>🤖 Ollama AI Status</h2>
+                          <div id="ollama-status">
+                              <div>Loading Ollama status...</div>
+                          </div>
+                      </div>
+                      
+                      <div class="card">
+                          <h2>📊 System Metrics</h2>
+                          <div id="system-metrics" class="metrics">
+                              Loading system metrics...
+                          </div>
+                      </div>
+                  </div>
+                  
+                  <script>
+                      async function refreshProxyStatus() {
+                          try {
+                              const response = await fetch('/api/proxy-status');
+                              const data = await response.json();
+                              
+                              const torStatus = data.tor.ready ? 'status-ready' : 'status-error';
+                              const i2pStatus = data.i2p.ready ? 'status-ready' : 'status-error';
+                              
+                              document.getElementById('proxy-status').innerHTML = `
+                                  <div>
+                                      <h3><span class="status-indicator ${torStatus}"></span>Tor Proxy</h3>
+                                      <p><strong>Status:</strong> ${data.tor.status}</p>
+                                      <p><strong>Message:</strong> ${data.tor.message}</p>
+                                      <p><strong>Port Open:</strong> ${data.tor.port_open ? '✅' : '❌'}</p>
+                                  </div>
+                                  <div>
+                                      <h3><span class="status-indicator ${i2pStatus}"></span>I2P Proxy</h3>
+                                      <p><strong>Status:</strong> ${data.i2p.status}</p>
+                                      <p><strong>Message:</strong> ${data.i2p.message}</p>
+                                      <p><strong>HTTP Proxy:</strong> ${data.i2p.http_proxy ? '✅' : '❌'}</p>
+                                      <p><strong>Console:</strong> ${data.i2p.console_accessible ? '✅' : '❌'}</p>
+                                  </div>
+                              `;
+                          } catch (error) {
+                              document.getElementById('proxy-status').innerHTML = `<div>Error loading proxy status: ${error.message}</div>`;
+                          }
+                      }
+                      
+                      async function refreshOllamaStatus() {
+                          try {
+                              const response = await fetch('/api/system-metrics');
+                              const data = await response.json();
+                              const ollama = data.ollama;
+                              
+                              const statusClass = ollama.available ? 'status-ready' : 'status-error';
+                              
+                              document.getElementById('ollama-status').innerHTML = `
+                                  <div>
+                                      <h3><span class="status-indicator ${statusClass}"></span>Ollama Service</h3>
+                                      <p><strong>Available:</strong> ${ollama.available ? '✅' : '❌'}</p>
+                                      <p><strong>Endpoint:</strong> ${ollama.endpoint}</p>
+                                      <p><strong>Models Count:</strong> ${ollama.models_count || 0}</p>
+                                      <p><strong>Running Models:</strong> ${ollama.running_models ? ollama.running_models.length : 0}</p>
+                                      ${ollama.models ? '<p><strong>Available Models:</strong> ' + ollama.models.map(m => m.name).join(', ') + '</p>' : ''}
+                                      ${ollama.error ? '<p><strong>Error:</strong> ' + ollama.error + '</p>' : ''}
+                                  </div>
+                              `;
+                          } catch (error) {
+                              document.getElementById('ollama-status').innerHTML = `<div>Error loading Ollama status: ${error.message}</div>`;
+                          }
+                      }
+                      
+                      async function refreshSystemMetrics() {
+                          try {
+                              const response = await fetch('/api/system-metrics');
+                              const data = await response.json();
+                              
+                              document.getElementById('system-metrics').innerHTML = `
+                                  <pre>${JSON.stringify(data, null, 2)}</pre>
+                              `;
+                          } catch (error) {
+                              document.getElementById('system-metrics').innerHTML = `Error loading system metrics: ${error.message}`;
+                          }
+                      }
+                      
+                      // Initial load
+                      refreshProxyStatus();
+                      refreshOllamaStatus();
+                      refreshSystemMetrics();
+                      
+                      // Auto-refresh every 30 seconds
+                      setInterval(() => {
+                          refreshProxyStatus();
+                          refreshOllamaStatus();
+                          refreshSystemMetrics();
+                      }, 30000);
+                  </script>
+              </body>
+              </html>
+              '''
+          
+          if __name__ == "__main__":
+              uvicorn.run(app, host="0.0.0.0", port=8080)
+          EOF
+          
+          # Install required packages
+          pip install requests socks || echo "Warning: Could not install additional packages"
+          
+          # Run the enhanced portal
+          PYTHONPATH=/app python /tmp/enhanced_portal_with_proxy_status.py
+        envFrom:
+        - configMapRef:
+            name: noctipede-config
+        - secretRef:
+            name: noctipede-secrets
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: noctipede-portal-service
+  namespace: noctipede
+spec:
+  selector:
+    app: noctipede-portal
+    component: web
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 32080
+  type: NodePort

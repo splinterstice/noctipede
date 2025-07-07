@@ -833,43 +833,11 @@
                 html += createCrawlerCard(data.crawler);
             }
             
-            // Network metrics - Fix: Use evidence-based connectivity
+            // Network metrics - Use actual connectivity test results
             if (data.network) {
-                // Fix network data using evidence from successful crawls
-                const fixedNetwork = { ...data.network };
-                const networkBreakdown = data.crawler?.network_breakdown || {};
-                
-                // Fix Tor status using evidence
-                if (fixedNetwork.tor) {
-                    const torWorking = (networkBreakdown.tor > 0) || (fixedNetwork.tor.status === 'connected');
-                    fixedNetwork.tor.status = torWorking ? 'connected' : fixedNetwork.tor.status;
-                    fixedNetwork.tor.connectivity = torWorking;
-                    // Clear error if working
-                    if (torWorking) {
-                        delete fixedNetwork.tor.error;
-                    }
-                }
-                
-                // Fix I2P status - prioritize real connectivity over evidence
-                if (fixedNetwork.i2p) {
-                    // Only consider it working if proxy is actually accessible AND we have successful crawls
-                    const proxyAccessible = !fixedNetwork.i2p.error || fixedNetwork.i2p.status === 'connected';
-                    const hasSuccessfulCrawls = (networkBreakdown.i2p > 0);
-                    const i2pWorking = proxyAccessible && hasSuccessfulCrawls;
-                    
-                    // Don't override error status - show real connectivity issues
-                    if (!proxyAccessible) {
-                        fixedNetwork.i2p.status = 'error';
-                        fixedNetwork.i2p.connectivity = false;
-                        fixedNetwork.i2p.proxy_connectivity = false;
-                    } else if (i2pWorking) {
-                        fixedNetwork.i2p.status = 'healthy';
-                        fixedNetwork.i2p.connectivity = true;
-                        fixedNetwork.i2p.proxy_connectivity = true;
-                    }
-                }
-                
-                html += createNetworkCard(fixedNetwork);
+                // Trust the actual network connectivity tests from the API
+                // The network connectivity tests are more reliable than crawl evidence
+                html += createNetworkCard(data);
             }
             
             // Service health - Fix: Handle both string and object service formats

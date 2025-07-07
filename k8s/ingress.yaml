@@ -2,6 +2,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: noctipede-http
+  namespace: noctipede
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: web
     traefik.ingress.kubernetes.io/router.middlewares: default-redirectscheme@kubernetescrd
@@ -16,7 +17,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: noctipede-portal
+                name: noctipede-portal-service
                 port:
                   number: 8080
 ---
@@ -24,6 +25,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: noctipede-https
+  namespace: noctipede
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     cert-manager.io/cluster-issuer: ca-issuer
@@ -38,7 +40,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: noctipede-portal
+                name: noctipede-portal-service
                 port:
                   number: 8080
   tls:

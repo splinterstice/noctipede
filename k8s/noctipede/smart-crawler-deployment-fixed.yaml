@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noctipede-smart-crawler
+  namespace: noctipede
+  labels:
+    app: noctipede-smart-crawler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noctipede-smart-crawler
+  template:
+    metadata:
+      labels:
+        app: noctipede-smart-crawler
+    spec:
+      initContainers:
+      - name: copy-sites-file
+        image: ghcr.io/splinterstice/noctipede:latest
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "📁 Copying sites.txt to volume..."
+          if [ -f /app/data/sites.txt ]; then
+            cp /app/data/sites.txt /shared/sites.txt
+            echo "✅ Sites file copied successfully"
+          else
+            echo "⚠️ No sites.txt found in image, creating sample file"
+            echo "http://3g2upl4pq6kufc4m.onion" > /shared/sites.txt
+            echo "http://reg.i2p" >> /shared/sites.txt
+            echo "http://stats.i2p" >> /shared/sites.txt
+          fi
+          ls -la /shared/
+        volumeMounts:
+        - name: sites-data
+          mountPath: /shared
+          
+      - name: wait-for-database
+        image: alpine:3.18
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for MariaDB to be ready..."
+          apk add --no-cache netcat-openbsd
+          until nc -z mariadb 3306; do
+            echo "⏳ MariaDB not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ MariaDB is ready!"
+          
+      - name: wait-for-portal
+        image: alpine:3.18
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for Portal API to be ready..."
+          apk add --no-cache netcat-openbsd
+          until nc -z noctipede-portal-service 8080; do
+            echo "⏳ Portal not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ Portal is ready!"
+          
+      containers:
+      - name: smart-crawler
+        image: ghcr.io/splinterstice/noctipede:latest
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🚀 Starting Smart Crawler Service..."
+          cd /app
+          
+          # Initialize database first
+          echo "🗄️ Initializing database..."
+          python database/init_db.py
+          
+          # Start the smart crawler service
+          echo "🧠 Starting smart crawler monitoring..."
+          python smart_crawler_service.py
+          
+        envFrom:
+        - configMapRef:
+            name: noctipede-config
+        - secretRef:
+            name: noctipede-secrets
+        env:
+        - name: MARIADB_HOST
+          value: "mariadb"
+        - name: PORTAL_URL
+          value: "http://noctipede-portal-service:8080"
+        - name: LOG_LEVEL
+          value: "INFO"
+        
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+            
+        volumeMounts:
+        - name: sites-data
+          mountPath: /app/data
+          readOnly: false
+        - name: log-data
+          mountPath: /app/logs
+        - name: output-data
+          mountPath: /app/output
+          
+      volumes:
+      - name: sites-data
+        emptyDir: {}
+      - name: log-data
+        emptyDir: {}
+      - name: output-data
+        emptyDir: {}
+          
+      restartPolicy: Always

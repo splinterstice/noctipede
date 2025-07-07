@@ -9,8 +9,8 @@ metadata:
     component: proxy
 data:
   i2pd.conf: |
-    # Minimal I2PD Configuration for Noctipede Crawler
-    # Basic settings that work with I2PD
+    # Native I2PD Configuration for Noctipede Crawler
+    # Using default native spinup process
 
     # Network settings
     ipv4 = true
@@ -46,9 +46,9 @@ data:
     # Basic performance settings
     limits.transittunnels = 1000
 
-    # Reseeding
-    reseed.verify = true
-
+    # Use native I2P bootstrap (no custom reseed config)
+    # Let I2PD handle reseeding with its built-in defaults
+    
     # NTCP2 transport
     ntcp2.enabled = true
 
@@ -105,31 +105,31 @@ spec:
             command:
             - /bin/sh
             - -c
-            - "nc -z localhost 4444"  # Match Docker Compose healthcheck
-          initialDelaySeconds: 60   # I2P takes time to bootstrap
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 10      # 5 minutes total startup time
+            - "pgrep i2pd"  # Just check if i2pd process is running
+          initialDelaySeconds: 30   # I2P takes time to bootstrap
+          periodSeconds: 10         # Check every 10 seconds
+          timeoutSeconds: 5
+          failureThreshold: 60      # 60 failures * 10s = 10 minutes total startup time
         livenessProbe:
           exec:
             command:
             - /bin/sh
             - -c
-            - "nc -z localhost 4444"
-          initialDelaySeconds: 300  # Start after 5 minutes
-          periodSeconds: 60
-          timeoutSeconds: 10
-          failureThreshold: 3
+            - "pgrep i2pd"  # Just check if i2pd process is running
+          initialDelaySeconds: 600  # Start after 10 minutes
+          periodSeconds: 60         # Check every minute
+          timeoutSeconds: 5
+          failureThreshold: 3       # Allow some failures before restart
         readinessProbe:
           exec:
             command:
             - /bin/sh
             - -c
-            - "nc -z localhost 4444"
-          initialDelaySeconds: 60
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 5
+            - "pgrep i2pd && sleep 1"  # Check if process is running and give it a moment
+          initialDelaySeconds: 120  # Wait 2 minutes before first readiness check
+          periodSeconds: 30         # Check every 30 seconds once ready
+          timeoutSeconds: 5
+          failureThreshold: 3
         volumeMounts:
         - name: i2p-data
           mountPath: /home/i2pd/data  # Updated to match I2PD path

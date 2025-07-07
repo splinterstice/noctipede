@@ -144,9 +144,20 @@ class BaseCrawler(ABC):
     
     def _crawl_site_pages(self, site: Site, db_session) -> bool:
         """Crawl pages for a site with depth tracking."""
+        # Store URL for error handling
+        site_url = site.url if site else "unknown"
+        
         try:
             # Ensure site object is properly bound to current session
-            db_session.merge(site)  # Use merge instead of refresh for better session handling
+            from database.session_fix import ensure_session_bound
+            site = ensure_session_bound(site, db_session)
+            
+            if not site:
+                self.logger.error(f"Failed to bind site object for {site_url}")
+                return False
+            
+            # Update site_url after ensuring site is bound
+            site_url = site.url
             
             # Start with the main page at depth 0
             # Format: (url, depth, is_offsite)
@@ -187,16 +198,23 @@ class BaseCrawler(ABC):
                 # Respect crawl delay
                 time.sleep(self.settings.crawl_delay_seconds)
             
-            self.logger.info(f"Crawled {len(crawled_pages)} pages for {site.url}")
+            self.logger.info(f"Crawled {len(crawled_pages)} pages for {site_url}")
             return True
             
         except Exception as e:
-            self.logger.error(f"Error crawling site pages for {site.url}: {e}")
+            self.logger.error(f"Error crawling site pages for {site_url}: {e}")
             return False
     
     def _crawl_page(self, url: str, site_id: int, db_session) -> Optional[Dict[str, Any]]:
         """Crawl a single page."""
         try:
+            # Normalize URL and skip media files
+            normalized_url = self._normalize_url(url)
+            
+            if self._is_media_file(normalized_url):
+                self.logger.debug(f"Skipping media file: {url}")
+                return None
+            
             start_time = time.time()
             
             # Make request
@@ -215,14 +233,14 @@ class BaseCrawler(ABC):
             # Calculate content hash
             content_hash = hashlib.sha256(content.encode('utf-8')).hexdigest()
             
-            # Check if page already exists with same content
+            # Check if normalized page already exists (to avoid fragment duplicates)
             existing_page = db_session.query(Page).filter_by(
-                url=url, content_hash=content_hash
+                url=normalized_url
             ).first()
             
             if existing_page:
-                self.logger.debug(f"Page content unchanged: {url}")
-                return {'links': self._extract_links(soup, url)}
+                self.logger.debug(f"Page already exists (normalized): {normalized_url}")
+                return {'links': self._extract_links(soup, normalized_url)}
             
             # Store page content in MinIO
             storage_result = self.storage_manager.store_page_content(
@@ -231,10 +249,14 @@ class BaseCrawler(ABC):
                 content_type=response.headers.get('content-type', 'text/html')
             )
             
-            # Create page record
+            # Create page record - ensure we have a valid site_id
+            if not site_id:
+                self.logger.error(f"Cannot create page record - no valid site_id for {normalized_url}")
+                return None
+            
             page = Page(
                 site_id=site_id,
-                url=url,
+                url=normalized_url,  # Use normalized URL to prevent fragment duplicates
                 title=title,
                 content=content[:10000],  # Store first 10k chars in DB
                 content_hash=content_hash,
@@ -247,7 +269,7 @@ class BaseCrawler(ABC):
             
             db_session.add(page)
             
-            # Update site page count - Fix: Refresh site object in current session
+            # Update site page count - Get the site object from the database
             site = db_session.query(Site).filter_by(id=site_id).first()
             if site:
                 site.page_count = (site.page_count or 0) + 1
@@ -266,15 +288,15 @@ class BaseCrawler(ABC):
                     else:
                         self.logger.warning(f"AI analysis failed for page: {url}")
                 except Exception as e:
-                    self.logger.error(f"AI analysis error for page {url}: {e}")
+                    self.logger.error(f"AI analysis error for page {normalized_url}: {e}")
             
-            # Extract and store media files
-            media_files = self._extract_media_files(soup, url, page.id, db_session)
+            # Extract and store media files using normalized URL
+            media_files = self._extract_media_files(soup, normalized_url, page.id, db_session)
             
-            # Extract links
-            links = self._extract_links(soup, url)
+            # Extract links using normalized URL
+            links = self._extract_links(soup, normalized_url)
             
-            self.logger.info(f"Successfully crawled page: {url}")
+            self.logger.info(f"Successfully crawled page: {normalized_url}")
             
             return {
                 'page': page,
@@ -288,19 +310,61 @@ class BaseCrawler(ABC):
             return None
     
     def _extract_links(self, soup: BeautifulSoup, base_url: str) -> List[str]:
-        """Extract links from page."""
+        """Extract links from page, filtering out fragments and media files."""
         links = []
+        
+        # Define media file extensions to exclude
+        media_extensions = {
+            '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.svg',
+            '.mp4', '.webm', '.avi', '.mov', '.wmv', '.flv', '.mkv',
+            '.mp3', '.wav', '.ogg', '.flac', '.aac',
+            '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+            '.zip', '.rar', '.7z', '.tar', '.gz',
+            '.css', '.js', '.ico', '.xml', '.json'
+        }
         
         for link in soup.find_all('a', href=True):
             href = link['href']
             full_url = urljoin(base_url, href)
             
             if is_valid_url(full_url) and self._is_same_network(full_url, base_url):
-                links.append(full_url)
+                # Remove URL fragment (everything after #)
+                clean_url = full_url.split('#')[0]
+                
+                # Skip if it's a media file
+                url_lower = clean_url.lower()
+                if any(url_lower.endswith(ext) for ext in media_extensions):
+                    continue
+                
+                # Skip if it's just a fragment of the current page
+                if clean_url == base_url.split('#')[0]:
+                    continue
+                    
+                links.append(clean_url)
         
         return list(set(links))  # Remove duplicates
     
-    def _extract_media_files(self, soup: BeautifulSoup, base_url: str, page_id: int, db_session) -> List[MediaFile]:
+    def _normalize_url(self, url: str) -> str:
+        """Normalize URL by removing fragments and trailing slashes."""
+        # Remove fragment
+        clean_url = url.split('#')[0]
+        # Remove trailing slash for consistency (except for root URLs)
+        if clean_url.endswith('/') and clean_url.count('/') > 3:
+            clean_url = clean_url.rstrip('/')
+        return clean_url
+    
+    def _is_media_file(self, url: str) -> bool:
+        """Check if URL points to a media file."""
+        media_extensions = {
+            '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.svg',
+            '.mp4', '.webm', '.avi', '.mov', '.wmv', '.flv', '.mkv',
+            '.mp3', '.wav', '.ogg', '.flac', '.aac',
+            '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+            '.zip', '.rar', '.7z', '.tar', '.gz',
+            '.css', '.js', '.ico', '.xml', '.json'
+        }
+        url_lower = url.lower()
+        return any(url_lower.endswith(ext) for ext in media_extensions)
         """Extract and store media files from page."""
         media_files = []
         
@@ -402,6 +466,87 @@ class BaseCrawler(ABC):
                 downloaded_at=datetime.utcnow(),
                 minio_bucket=storage_result['bucket'],
                 minio_object_name=storage_result['object_name']
+            )
+            
+            db_session.add(media_file)
+            # Don't commit here - let the transaction manager handle it
+            
+            self.logger.debug(f"Downloaded and stored media: {url}")
+            return media_file
+            
+        except Exception as e:
+            self.logger.error(f"Error downloading media {url}: {e}")
+            return None
+    
+    def _extract_media_files(self, soup: BeautifulSoup, base_url: str, page_id: int, db_session) -> List[MediaFile]:
+        """Extract and store media files from page."""
+        media_files = []
+        
+        # Extract images
+        for img in soup.find_all('img', src=True):
+            src = img['src']
+            full_url = urljoin(base_url, src)
+            
+            if is_valid_url(full_url) and self._is_same_network(full_url, base_url):
+                media_file = self._download_and_store_media(full_url, page_id, db_session)
+                if media_file:
+                    media_files.append(media_file)
+        
+        # Extract other media (video, audio, etc.)
+        for tag in soup.find_all(['video', 'audio', 'source'], src=True):
+            src = tag['src']
+            full_url = urljoin(base_url, src)
+            
+            if is_valid_url(full_url) and self._is_same_network(full_url, base_url):
+                media_file = self._download_and_store_media(full_url, page_id, db_session)
+                if media_file:
+                    media_files.append(media_file)
+        
+        return media_files
+    
+    def _download_and_store_media(self, url: str, page_id: int, db_session) -> Optional[MediaFile]:
+        """Download and store a media file."""
+        try:
+            # Check if media file already exists
+            existing_media = db_session.query(MediaFile).filter_by(url=url).first()
+            if existing_media:
+                self.logger.debug(f"Media file already exists: {url}")
+                return existing_media
+            
+            # Download media file
+            response = self.session.get(url, timeout=30, stream=True)
+            if response.status_code != 200:
+                self.logger.warning(f"Failed to download media {url}: {response.status_code}")
+                return None
+            
+            content_type = response.headers.get('content-type', 'application/octet-stream')
+            content_length = int(response.headers.get('content-length', 0))
+            
+            # Check file size limit (10MB default)
+            max_size = self.settings.max_image_size_mb * 1024 * 1024
+            if content_length > max_size:
+                self.logger.warning(f"Media file too large: {url} ({content_length} bytes)")
+                return None
+            
+            # Read content
+            content = response.content
+            if len(content) > max_size:
+                self.logger.warning(f"Media file too large after download: {url} ({len(content)} bytes)")
+                return None
+            
+            # Store in MinIO
+            file_hash = hashlib.sha256(content).hexdigest()
+            storage_path = self.storage_manager.store_media_file(url, content, content_type)
+            
+            # Create media file record
+            media_file = MediaFile(
+                page_id=page_id,
+                url=url,
+                file_type=content_type,
+                file_size=len(content),
+                file_hash=file_hash,
+                storage_path=storage_path,
+                downloaded_at=datetime.utcnow()
             )
             
             db_session.add(media_file)

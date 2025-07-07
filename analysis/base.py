@@ -1,6 +1,7 @@
 """Base analyzer class."""
 
 import json
+import time
 import requests
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
@@ -21,9 +22,15 @@ class BaseAnalyzer(ABC):
         model: str,
         prompt: str,
         system_prompt: Optional[str] = None,
-        images: Optional[list] = None
+        images: Optional[list] = None,
+        request_type: str = "generate"
     ) -> Optional[Dict[str, Any]]:
-        """Make a call to the Ollama API."""
+        """Make a call to the Ollama API with usage tracking."""
+        start_time = time.time()
+        success = False
+        error_message = None
+        tokens_used = None
+        
         try:
             payload = {
                 "model": model,
@@ -43,15 +50,55 @@ class BaseAnalyzer(ABC):
                 timeout=120
             )
             
+            duration = time.time() - start_time
+            
             if response.status_code == 200:
-                return response.json()
+                result = response.json()
+                success = True
+                
+                # Extract token usage if available
+                if 'eval_count' in result:
+                    tokens_used = result['eval_count']
+                
+                # Track the successful request
+                self._track_request(model, request_type, success, duration, tokens_used)
+                
+                return result
             else:
-                self.logger.error(f"Ollama API error: {response.status_code} - {response.text}")
+                error_message = f"HTTP {response.status_code}: {response.text}"
+                self.logger.error(f"Ollama API error: {error_message}")
+                
+                # Track the failed request
+                self._track_request(model, request_type, success, duration, error_message=error_message)
+                
                 return None
                 
         except Exception as e:
-            self.logger.error(f"Error calling Ollama API: {e}")
+            duration = time.time() - start_time
+            error_message = str(e)
+            self.logger.error(f"Error calling Ollama API: {error_message}")
+            
+            # Track the failed request
+            self._track_request(model, request_type, success, duration, error_message=error_message)
+            
             return None
+    
+    def _track_request(self, model: str, request_type: str, success: bool, 
+                      duration: float, tokens_used: Optional[int] = None,
+                      error_message: Optional[str] = None):
+        """Track Ollama API request for monitoring."""
+        try:
+            from analysis.ollama_monitor import track_ollama_request
+            track_ollama_request(
+                model_name=model,
+                request_type=request_type,
+                success=success,
+                duration=duration,
+                tokens_used=tokens_used,
+                error_message=error_message
+            )
+        except Exception as e:
+            self.logger.debug(f"Failed to track request: {e}")
     
     @abstractmethod
     def analyze(self, content: Any) -> Optional[Dict[str, Any]]:

@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mariadb-test
+  namespace: noctipede
+spec:
+  restartPolicy: Never
+  containers:
+  - name: mariadb-client
+    image: mariadb:11.0
+    command: ['sh', '-c']
+    args:
+    - |
+      echo "Testing MariaDB connectivity..."
+      mariadb -h mariadb -u root -p$MYSQL_ROOT_PASSWORD -e "SHOW VARIABLES LIKE 'character_set%';" || echo "Connection failed"
+      echo "Testing database creation..."
+      mariadb -h mariadb -u root -p$MYSQL_ROOT_PASSWORD -e "SHOW DATABASES;" || echo "Database test failed"
+    env:
+    - name: MYSQL_ROOT_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: mariadb-secret
+          key: MARIA_ROOT_PASSWORD

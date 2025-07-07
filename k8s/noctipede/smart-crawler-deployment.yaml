@@ -1,0 +1,253 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noctipede-smart-crawler
+  namespace: noctipede
+  labels:
+    app: noctipede-smart-crawler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noctipede-smart-crawler
+  template:
+    metadata:
+      labels:
+        app: noctipede-smart-crawler
+    spec:
+      initContainers:
+      - name: copy-sites-file
+        image: ghcr.io/splinterstice/noctipede:latest
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "📁 Copying sites.txt to volume..."
+          if [ -f /app/data/sites.txt ]; then
+            cp /app/data/sites.txt /shared/sites.txt
+            echo "✅ Sites file copied successfully"
+          else
+            echo "⚠️ No sites.txt found in image, creating sample file"
+            echo "http://3g2upl4pq6kufc4m.onion" > /shared/sites.txt
+            echo "http://reg.i2p" >> /shared/sites.txt
+          fi
+          ls -la /shared/
+        volumeMounts:
+        - name: sites-data
+          mountPath: /shared
+          
+      - name: wait-for-database
+        image: alpine:3.18
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for MariaDB to be ready..."
+          apk add --no-cache netcat-openbsd
+          until nc -z mariadb 3306; do
+            echo "⏳ MariaDB not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ MariaDB is ready!"
+          
+      - name: wait-for-portal
+        image: alpine:3.18
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for Portal API to be ready..."
+          apk add --no-cache netcat-openbsd
+          until nc -z noctipede-portal-service 8080; do
+            echo "⏳ Portal not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ Portal is ready!"
+          
+      containers:
+      - name: smart-crawler
+        image: ghcr.io/splinterstice/noctipede:b663234-dirty
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🚀 Starting Smart Crawler Service..."
+          cd /app
+          python -c "
+          import asyncio
+          import aiohttp
+          import time
+          import logging
+          import sys
+          from datetime import datetime, timedelta
+          from typing import Dict, Any, Optional
+          
+          sys.path.insert(0, '/app')
+          
+          from core import get_logger
+          from config import get_settings
+          from crawlers.manager import CrawlerManager
+          
+          class SmartCrawlerService:
+              def __init__(self, portal_url='http://noctipede-portal-service:8080'):
+                  self.portal_url = portal_url
+                  self.settings = get_settings()
+                  self.logger = get_logger(__name__)
+                  self.crawler_manager = CrawlerManager()
+                  self.last_crawl_time = None
+                  self.min_crawl_interval = timedelta(minutes=30)
+                  self.check_interval = 60
+                  self.running = False
+                  
+              async def check_proxy_status(self):
+                  try:
+                      async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+                          async with session.get(f'{self.portal_url}/api/network') as response:
+                              if response.status == 200:
+                                  return await response.json()
+                              else:
+                                  self.logger.error(f'Portal API returned status {response.status}')
+                                  return {}
+                  except Exception as e:
+                      self.logger.error(f'Failed to check proxy status: {e}')
+                      return {}
+              
+              def are_proxies_ready(self, status):
+                  if not status:
+                      return False
+                      
+                  tor_ready = (
+                      status.get('tor', {}).get('status') == 'connected' and
+                      status.get('tor', {}).get('connectivity', False) and
+                      status.get('tor', {}).get('proxy_connectivity', False)
+                  )
+                  
+                  i2p_ready = (
+                      status.get('i2p', {}).get('status') == 'connected' and
+                      status.get('i2p', {}).get('connectivity', False) and
+                      status.get('i2p', {}).get('proxy_connectivity', False)
+                  )
+                  
+                  return tor_ready and i2p_ready
+              
+              def should_start_crawl(self):
+                  if self.last_crawl_time is None:
+                      return True
+                      
+                  time_since_last = datetime.utcnow() - self.last_crawl_time
+                  return time_since_last >= self.min_crawl_interval
+              
+              async def start_crawl_session(self):
+                  self.logger.info('🚀 Starting smart crawl session...')
+                  
+                  try:
+                      sites = self.crawler_manager.load_sites_from_file()
+                      if not sites:
+                          self.logger.warning('No sites found to crawl')
+                          return {'success': False, 'message': 'No sites to crawl'}
+                      
+                      self.logger.info(f'🕷️ Starting crawl of {len(sites)} sites...')
+                      result = await self.crawler_manager.crawl_sites_async(sites)
+                      
+                      self.last_crawl_time = datetime.utcnow()
+                      
+                      self.logger.info(f'✅ Crawl completed: {result[\"successful\"]} successful, {result[\"failed\"]} failed')
+                      return result
+                      
+                  except Exception as e:
+                      self.logger.error(f'❌ Crawl session failed: {e}')
+                      return {'success': False, 'error': str(e)}
+              
+              async def monitor_and_crawl(self):
+                  self.logger.info('🔍 Starting smart crawler monitoring service...')
+                  self.running = True
+                  
+                  consecutive_ready_checks = 0
+                  required_consecutive_checks = 3
+                  
+                  while self.running:
+                      try:
+                          status = await self.check_proxy_status()
+                          proxies_ready = self.are_proxies_ready(status)
+                          
+                          if proxies_ready:
+                              consecutive_ready_checks += 1
+                              self.logger.info(f'✅ Proxies ready ({consecutive_ready_checks}/{required_consecutive_checks})')
+                              
+                              if consecutive_ready_checks >= required_consecutive_checks:
+                                  if self.should_start_crawl():
+                                      self.logger.info('🎯 All conditions met - starting crawl!')
+                                      await self.start_crawl_session()
+                                      consecutive_ready_checks = 0
+                                  else:
+                                      time_until_next = self.min_crawl_interval - (datetime.utcnow() - self.last_crawl_time)
+                                      self.logger.info(f'⏳ Proxies ready but waiting {time_until_next} until next crawl')
+                          else:
+                              if consecutive_ready_checks > 0:
+                                  self.logger.warning('⚠️ Proxies not ready, resetting ready counter')
+                              consecutive_ready_checks = 0
+                              
+                              tor_status = status.get('tor', {}).get('status', 'unknown')
+                              i2p_status = status.get('i2p', {}).get('status', 'unknown')
+                              self.logger.info(f'🔄 Waiting for proxies - Tor: {tor_status}, I2P: {i2p_status}')
+                          
+                          await asyncio.sleep(self.check_interval)
+                          
+                      except Exception as e:
+                          self.logger.error(f'❌ Error in monitoring loop: {e}')
+                          await asyncio.sleep(self.check_interval)
+          
+          async def main():
+              logging.basicConfig(
+                  level=logging.INFO,
+                  format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+              )
+              
+              service = SmartCrawlerService()
+              
+              try:
+                  await service.monitor_and_crawl()
+              except KeyboardInterrupt:
+                  service.stop()
+                  print('🛑 Smart crawler service stopped by user')
+              except Exception as e:
+                  print(f'❌ Smart crawler service failed: {e}')
+          
+          asyncio.run(main())
+          "
+          
+        envFrom:
+        - configMapRef:
+            name: noctipede-config
+        - secretRef:
+            name: noctipede-secrets
+        env:
+        - name: MARIADB_HOST
+          value: "mariadb"
+        - name: PORTAL_URL
+          value: "http://noctipede-portal-service:8080"
+        - name: LOG_LEVEL
+          value: "INFO"
+        
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+            
+        volumeMounts:
+        - name: sites-data
+          mountPath: /app/data
+          readOnly: false
+        - name: log-data
+          mountPath: /app/logs
+        - name: output-data
+          mountPath: /app/output
+          
+      volumes:
+      - name: sites-data
+        emptyDir: {}
+      - name: log-data
+        emptyDir: {}
+      - name: output-data
+        emptyDir: {}
+          
+      restartPolicy: Always

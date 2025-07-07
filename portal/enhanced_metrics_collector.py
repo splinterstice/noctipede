@@ -183,7 +183,16 @@ class EnhancedMetricsCollector:
     async def collect_database_metrics(self) -> Dict[str, Any]:
         """Collect database metrics and pressure indicators"""
         try:
-            connection = pymysql.connect(**self.db_config)
+            # Enhanced connection with better timeout and error handling
+            db_config = self.db_config.copy()
+            db_config.update({
+                'connect_timeout': 5,
+                'read_timeout': 5,
+                'write_timeout': 5,
+                'autocommit': True
+            })
+            
+            connection = pymysql.connect(**db_config)
             cursor = connection.cursor()
             
             metrics = {
@@ -194,48 +203,61 @@ class EnhancedMetricsCollector:
                 'pressure': 0
             }
             
-            # Connection metrics
-            cursor.execute("SHOW STATUS LIKE 'Threads_connected'")
-            threads_connected = int(cursor.fetchone()[1])
+            # Connection metrics with error handling
+            try:
+                cursor.execute("SHOW STATUS LIKE 'Threads_connected'")
+                result = cursor.fetchone()
+                threads_connected = int(result[1]) if result else 0
+                
+                cursor.execute("SHOW STATUS LIKE 'Max_used_connections'")
+                result = cursor.fetchone()
+                max_used_connections = int(result[1]) if result else 0
+                
+                cursor.execute("SHOW VARIABLES LIKE 'max_connections'")
+                result = cursor.fetchone()
+                max_connections = int(result[1]) if result else 100
+                
+                metrics['connections'] = {
+                    'current': threads_connected,
+                    'max_used': max_used_connections,
+                    'max_allowed': max_connections,
+                    'utilization_percent': round((threads_connected / max_connections) * 100, 2) if max_connections > 0 else 0
+                }
+            except Exception as e:
+                self.logger.warning(f"Could not collect connection metrics: {e}")
+                metrics['connections'] = {'error': str(e)}
             
-            cursor.execute("SHOW STATUS LIKE 'Max_used_connections'")
-            max_used_connections = int(cursor.fetchone()[1])
-            
-            cursor.execute("SHOW VARIABLES LIKE 'max_connections'")
-            max_connections = int(cursor.fetchone()[1])
-            
-            metrics['connections'] = {
-                'current': threads_connected,
-                'max_used': max_used_connections,
-                'max_allowed': max_connections,
-                'utilization_percent': (threads_connected / max_connections) * 100
-            }
-            
-            # Performance metrics
-            cursor.execute("SHOW STATUS LIKE 'Queries'")
-            total_queries = int(cursor.fetchone()[1])
-            
-            cursor.execute("SHOW STATUS LIKE 'Uptime'")
-            uptime = int(cursor.fetchone()[1])
-            
-            cursor.execute("SHOW STATUS LIKE 'Slow_queries'")
-            slow_queries = int(cursor.fetchone()[1])
-            
-            # Buffer pool metrics
-            cursor.execute("SHOW STATUS LIKE 'Innodb_buffer_pool_read_requests'")
-            buffer_read_requests = int(cursor.fetchone()[1])
-            
-            cursor.execute("SHOW STATUS LIKE 'Innodb_buffer_pool_reads'")
-            buffer_reads = int(cursor.fetchone()[1])
-            
-            buffer_hit_ratio = ((buffer_read_requests - buffer_reads) / buffer_read_requests * 100) if buffer_read_requests > 0 else 0
-            
-            metrics['performance'] = {
-                'queries_per_second': total_queries / uptime if uptime > 0 else 0,
-                'slow_queries': slow_queries,
-                'buffer_hit_ratio': buffer_hit_ratio,
-                'uptime_seconds': uptime
-            }
+            # Performance metrics with error handling
+            try:
+                cursor.execute("SHOW STATUS LIKE 'Queries'")
+                result = cursor.fetchone()
+                total_queries = int(result[1]) if result else 0
+                
+                cursor.execute("SHOW STATUS LIKE 'Uptime'")
+                result = cursor.fetchone()
+                uptime = int(result[1]) if result else 1
+                
+                cursor.execute("SHOW STATUS LIKE 'Slow_queries'")
+                slow_queries = int(cursor.fetchone()[1])
+                
+                # Buffer pool metrics
+                cursor.execute("SHOW STATUS LIKE 'Innodb_buffer_pool_read_requests'")
+                buffer_read_requests = int(cursor.fetchone()[1])
+                
+                cursor.execute("SHOW STATUS LIKE 'Innodb_buffer_pool_reads'")
+                buffer_reads = int(cursor.fetchone()[1])
+                
+                buffer_hit_ratio = ((buffer_read_requests - buffer_reads) / buffer_read_requests * 100) if buffer_read_requests > 0 else 0
+                
+                metrics['performance'] = {
+                    'queries_per_second': total_queries / uptime if uptime > 0 else 0,
+                    'slow_queries': slow_queries,
+                    'buffer_hit_ratio': buffer_hit_ratio,
+                    'uptime_seconds': uptime
+                }
+            except Exception as e:
+                self.logger.warning(f"Could not collect performance metrics: {e}")
+                metrics['performance'] = {'error': str(e)}
             
             # Storage metrics
             cursor.execute("""
@@ -258,12 +280,16 @@ class EnhancedMetricsCollector:
                 cursor.execute("SELECT COUNT(*) FROM pages")
                 page_count = cursor.fetchone()[0]
                 
+                cursor.execute("SELECT COUNT(*) FROM media_files")
+                media_count = cursor.fetchone()[0]
+                
                 cursor.execute("SELECT COUNT(*) FROM pages WHERE crawled_at > NOW() - INTERVAL 1 HOUR")
                 recent_pages = cursor.fetchone()[0]
                 
                 metrics['noctipede'] = {
                     'sites': site_count,
                     'pages': page_count,
+                    'media_files': media_count,
                     'recent_pages_1h': recent_pages
                 }
             except Exception as e:
@@ -292,6 +318,7 @@ class EnhancedMetricsCollector:
     async def collect_minio_metrics(self) -> Dict[str, Any]:
         """Collect MinIO metrics and storage information"""
         try:
+            # Enhanced MinIO client with better error handling
             client = Minio(
                 self.minio_config['endpoint'],
                 access_key=self.minio_config['access_key'],
@@ -303,12 +330,34 @@ class EnhancedMetricsCollector:
                 'status': 'healthy',
                 'storage': {},
                 'objects': {},
-                'pressure': 0
+                'pressure': 0,
+                'endpoint': self.minio_config['endpoint']
             }
             
-            # Check if bucket exists
-            bucket_name = self.minio_config['bucket']
-            if not client.bucket_exists(bucket_name):
+            # Test basic connectivity first
+            try:
+                # Check if bucket exists (this tests connectivity)
+                bucket_name = self.minio_config['bucket']
+                bucket_exists = client.bucket_exists(bucket_name)
+                
+                if not bucket_exists:
+                    return {
+                        'error': f'Bucket {bucket_name} does not exist', 
+                        'status': 'error', 
+                        'pressure': 100,
+                        'endpoint': self.minio_config['endpoint']
+                    }
+                    
+                metrics['bucket_name'] = bucket_name
+                metrics['bucket_exists'] = True
+                
+            except Exception as e:
+                return {
+                    'error': f'MinIO connection failed: {str(e)}', 
+                    'status': 'error', 
+                    'pressure': 100,
+                    'endpoint': self.minio_config['endpoint']
+                }
                 return {'error': f'Bucket {bucket_name} does not exist', 'status': 'error', 'pressure': 100}
             
             # Collect object statistics
@@ -562,43 +611,84 @@ class EnhancedMetricsCollector:
             'i2p': {'status': 'unknown', 'connectivity': False, 'proxy_connectivity': False}
         }
         
-        # Test Tor connectivity
+        # Test Tor proxy connectivity (SOCKS5)
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
-                # Test Tor SOCKS proxy
-                proxy_url = f"socks5://{self.proxy_config['tor_host']}:{self.proxy_config['tor_port']}"
+            import socket
+            
+            # Test basic socket connection to Tor proxy
+            tor_host = self.proxy_config['tor_host']
+            tor_port = self.proxy_config['tor_port']
+            
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(5)
+            result = sock.connect_ex((tor_host, tor_port))
+            sock.close()
+            
+            if result == 0:
+                metrics['tor'] = {
+                    'status': 'healthy',
+                    'connectivity': True,
+                    'proxy_host': tor_host,
+                    'proxy_port': tor_port,
+                    'connection_test': 'passed'
+                }
+            else:
+                metrics['tor'] = {
+                    'status': 'error',
+                    'connectivity': False,
+                    'proxy_host': tor_host,
+                    'proxy_port': tor_port,
+                    'connection_test': 'failed',
+                    'error': f"Connection failed (code: {result})"
+                }
                 
-                try:
-                    async with session.get(
-                        'https://check.torproject.org/api/ip',
-                        proxy=proxy_url
-                    ) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            metrics['tor'] = {
-                                'status': 'healthy',
-                                'connectivity': True,
-                                'is_tor': data.get('IsTor', False),
-                                'ip': data.get('IP', 'unknown')
-                            }
-                        else:
-                            metrics['tor'] = {
-                                'status': 'error',
-                                'connectivity': False,
-                                'error': f"HTTP {response.status}"
-                            }
-                except Exception as e:
-                    metrics['tor'] = {
-                        'status': 'error',
-                        'connectivity': False,
-                        'error': str(e)
-                    }
         except Exception as e:
-            metrics['tor'] = {'status': 'error', 'connectivity': False, 'error': str(e)}
+            metrics['tor'] = {
+                'status': 'error', 
+                'connectivity': False, 
+                'error': str(e)
+            }
         
-        # Test I2P connectivity
+        # Test I2P proxy connectivity (HTTP)
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+            import socket
+            
+            # Test basic socket connection to I2P HTTP proxy
+            i2p_host = self.proxy_config['i2p_host']
+            i2p_port = self.proxy_config['i2p_port']
+            
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(5)
+            result = sock.connect_ex((i2p_host, i2p_port))
+            sock.close()
+            
+            if result == 0:
+                metrics['i2p'] = {
+                    'status': 'healthy',
+                    'connectivity': True,
+                    'proxy_connectivity': True,
+                    'proxy_host': i2p_host,
+                    'proxy_port': i2p_port,
+                    'connection_test': 'passed'
+                }
+            else:
+                metrics['i2p'] = {
+                    'status': 'error',
+                    'connectivity': False,
+                    'proxy_connectivity': False,
+                    'proxy_host': i2p_host,
+                    'proxy_port': i2p_port,
+                    'connection_test': 'failed',
+                    'error': f"Connection failed (code: {result})"
+                }
+                
+        except Exception as e:
+            metrics['i2p'] = {
+                'status': 'error', 
+                'connectivity': False, 
+                'proxy_connectivity': False,
+                'error': str(e)
+            }
                 # Test I2P HTTP proxy connectivity
                 proxy_url = f"http://{self.proxy_config['i2p_host']}:{self.proxy_config['i2p_port']}"
                 

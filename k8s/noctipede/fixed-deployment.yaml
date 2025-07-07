@@ -1,0 +1,147 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noctipede-app
+  namespace: noctipede
+  labels:
+    app: noctipede-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noctipede-app
+  template:
+    metadata:
+      labels:
+        app: noctipede-app
+    spec:
+      initContainers:
+      - name: wait-for-database
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for MariaDB to be ready..."
+          until nc -z mariadb 3306; do
+            echo "⏳ MariaDB not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ MariaDB is ready!"
+      - name: wait-for-tor
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for Tor proxy to be ready..."
+          until nc -z tor-proxy 9150; do
+            echo "⏳ Tor proxy not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ Tor proxy is ready!"
+      - name: wait-for-i2p
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for I2P proxy to be ready..."
+          until nc -z i2p-proxy 4444; do
+            echo "⏳ I2P proxy not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ I2P proxy is ready!"
+      - name: init-sites-data
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "📋 Initializing sites data..."
+          if [ ! -f /shared-data/sites.txt ]; then
+            echo "Creating default sites.txt..."
+            cat > /shared-data/sites.txt << 'EOF'
+          # Tor sites
+          http://3g2upl4pq6kufc4m.onion
+          http://facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion
+          
+          # I2P sites  
+          http://reg.i2p/
+          http://notbob.i2p/
+          http://stats.i2p/
+          EOF
+          fi
+          echo "✅ Sites data initialized"
+        volumeMounts:
+        - name: sites-data
+          mountPath: /shared-data
+      containers:
+      - name: noctipede-app
+        image: noctipede:fixed
+        imagePullPolicy: Never
+        env:
+        - name: MARIADB_HOST
+          value: "mariadb"
+        - name: MARIADB_PORT
+          value: "3306"
+        - name: MARIADB_USER
+          value: "splinter-research"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: MARIA_USER_PASSWORD
+        - name: MARIADB_DATABASE
+          value: "splinter-research"
+        - name: MINIO_ENDPOINT
+          value: "minio:9000"
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-secret
+              key: MINIO_ACCESS_KEY
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-secret
+              key: MINIO_SECRET_KEY
+        - name: MINIO_BUCKET_NAME
+          value: "noctipede-data"
+        - name: MINIO_SECURE
+          value: "false"
+        - name: OLLAMA_ENDPOINT
+          value: "http://host.docker.internal:11434"
+        - name: TOR_PROXY_HOST
+          value: "tor-proxy"
+        - name: TOR_PROXY_PORT
+          value: "9150"
+        - name: I2P_PROXY_HOST
+          value: "i2p-proxy"
+        - name: I2P_PROXY_PORT
+          value: "4444"
+        - name: SITES_FILE_PATH
+          value: "/shared-data/sites.txt"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: CONTENT_ANALYSIS_ENABLED
+          value: "true"
+        - name: IMAGE_ANALYSIS_ENABLED
+          value: "true"
+        ports:
+        - containerPort: 8080
+          name: http
+        volumeMounts:
+        - name: output-data
+          mountPath: /app/output
+        - name: log-data
+          mountPath: /app/logs
+        - name: sites-data
+          mountPath: /shared-data
+        command: ["python", "-m", "noctipede.crawlers.main"]
+      volumes:
+      - name: output-data
+        persistentVolumeClaim:
+          claimName: noctipede-output-pvc-rwx
+      - name: log-data
+        persistentVolumeClaim:
+          claimName: noctipede-logs-pvc-rwx
+      - name: sites-data
+        persistentVolumeClaim:
+          claimName: noctipede-sites-pvc-rwx

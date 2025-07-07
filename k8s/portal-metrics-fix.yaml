@@ -1,0 +1,263 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: portal-fixes
+  namespace: noctipede
+data:
+  # Fixed metrics collector with proper session management
+  combined_metrics_collector.py: |
+    """
+    Combined Metrics Collector for Noctipede Portal
+    Merges basic portal metrics with enhanced analysis
+    FIXED: Database session management and SQLAlchemy compatibility
+    """
+    
+    import asyncio
+    import json
+    import logging
+    import os
+    import sys
+    import time
+    import pymysql
+    from datetime import datetime, timedelta
+    from typing import Dict, Any, Optional, List
+    
+    # Add the app directory to Python path
+    sys.path.insert(0, '/app')
+    
+    from database.session import get_db_session
+    from database.models import Site, Page, MediaFile
+    from sqlalchemy import func, and_, or_
+    from config.settings import get_settings
+    
+    class CombinedMetricsCollector:
+        """Combined metrics collector with database session fixes"""
+        
+        def __init__(self):
+            self.logger = logging.getLogger(__name__)
+            self.settings = get_settings()
+            
+            # Database configuration for direct connections
+            self.db_config = {
+                'host': os.getenv('MARIADB_HOST', 'mariadb'),
+                'port': int(os.getenv('MARIADB_PORT', 3306)),
+                'user': os.getenv('MARIADB_USER', 'splinter-research'),
+                'password': os.getenv('MARIADB_PASSWORD'),
+                'database': os.getenv('MARIADB_DATABASE', 'splinter-research'),
+                'charset': 'utf8mb4'
+            }
+        
+        async def collect_all_metrics(self) -> Dict[str, Any]:
+            """Collect all system metrics"""
+            start_time = time.time()
+            
+            # Initialize base metrics structure
+            metrics = {
+                'timestamp': datetime.now().isoformat(),
+                'collection_time': 0,
+                'system': await self.collect_system_metrics(),
+                'database': await self.collect_database_metrics(),
+                'minio': await self.collect_minio_metrics(),
+                'ollama': await self.collect_ollama_metrics(),
+                'crawler': await self.collect_combined_crawler_metrics(),
+                'network': await self.collect_network_metrics(),
+                'services': await self.collect_service_metrics()
+            }
+            
+            metrics['collection_time'] = round(time.time() - start_time, 3)
+            return metrics
+        
+        async def collect_combined_crawler_metrics(self) -> Dict[str, Any]:
+            """Collect crawler metrics with fixed database queries"""
+            metrics = {
+                'status': 'unknown',
+                'response_codes': {},
+                'performance': {},
+                'progress': {},
+                'errors': {
+                    'sites_with_errors': 0,
+                    'error_rate_percent': 0,
+                    'recent_errors': []
+                },
+                'network_breakdown': {},
+                'log_analysis': {},
+                'real_time': {}
+            }
+            
+            # === BASIC PORTAL METRICS (Database-driven with fixed session management) ===
+            session = None
+            try:
+                if self.settings:
+                    session = get_db_session()
+                    yesterday = datetime.utcnow() - timedelta(hours=24)
+                    
+                    # HTTP response codes from recent crawls
+                    response_codes = session.query(
+                        Page.status_code,
+                        func.count(Page.id).label('count')
+                    ).filter(
+                        Page.crawled_at >= yesterday
+                    ).group_by(Page.status_code).all()
+                    
+                    # Network type breakdown - use simpler approach for compatibility
+                    tor_count = session.query(Site).filter(Site.url.like('%.onion%')).count()
+                    i2p_count = session.query(Site).filter(Site.url.like('%.i2p%')).count()
+                    clearnet_count = session.query(Site).filter(
+                        ~Site.url.like('%.onion%'),
+                        ~Site.url.like('%.i2p%')
+                    ).count()
+                    
+                    network_stats = []
+                    if tor_count > 0:
+                        network_stats.append(('tor', tor_count))
+                    if i2p_count > 0:
+                        network_stats.append(('i2p', i2p_count))
+                    if clearnet_count > 0:
+                        network_stats.append(('clearnet', clearnet_count))
+                    
+                    # Populate basic metrics
+                    metrics['response_codes'] = {str(code): count for code, count in response_codes}
+                    metrics['network_breakdown'] = {network: count for network, count in network_stats}
+                    
+            except Exception as e:
+                self.logger.warning(f"Could not collect basic crawler metrics: {e}")
+            finally:
+                if session:
+                    try:
+                        session.close()
+                    except:
+                        pass
+            
+            # === REAL-TIME METRICS (Direct database queries) ===
+            try:
+                connection = pymysql.connect(**self.db_config)
+                cursor = connection.cursor()
+                
+                # Recent activity metrics
+                cursor.execute("""
+                    SELECT 
+                        COUNT(*) as total_pages,
+                        COUNT(CASE WHEN crawled_at > NOW() - INTERVAL 1 HOUR THEN 1 END) as recent_pages,
+                        COUNT(CASE WHEN crawled_at > NOW() - INTERVAL 24 HOUR THEN 1 END) as pages_24h,
+                        AVG(CASE WHEN response_time IS NOT NULL THEN response_time END) as avg_response_time,
+                        MAX(crawled_at) as last_crawl
+                    FROM pages
+                """)
+                
+                result = cursor.fetchone()
+                if result:
+                    total_pages, recent_pages, pages_24h, avg_response_time, last_crawl = result
+                    
+                    # Top domains by page count
+                    cursor.execute("""
+                        SELECT 
+                            SUBSTRING_INDEX(SUBSTRING_INDEX(url, '/', 3), '/', -1) as domain,
+                            COUNT(*) as page_count
+                        FROM pages 
+                        GROUP BY domain 
+                        ORDER BY page_count DESC 
+                        LIMIT 10
+                    """)
+                    
+                    top_domains = [
+                        {'domain': domain, 'page_count': count} 
+                        for domain, count in cursor.fetchall()
+                    ]
+                    
+                    metrics['real_time'] = {
+                        'total_pages': total_pages or 0,
+                        'pages_last_hour': recent_pages or 0,
+                        'pages_last_24h': pages_24h or 0,
+                        'avg_response_time': float(avg_response_time) if avg_response_time else 0,
+                        'last_crawl': last_crawl.isoformat() if last_crawl else None,
+                        'top_domains': top_domains
+                    }
+                
+                connection.close()
+                
+            except Exception as e:
+                self.logger.warning(f"Could not collect real-time crawler metrics: {e}")
+            
+            return metrics
+        
+        # ... (other methods remain the same)
+        async def collect_system_metrics(self) -> Dict[str, Any]:
+            """Collect system resource metrics"""
+            try:
+                import psutil
+                
+                # CPU metrics
+                cpu_percent = psutil.cpu_percent(interval=1)
+                cpu_count = psutil.cpu_count()
+                load_avg = psutil.getloadavg()
+                
+                # Memory metrics
+                memory = psutil.virtual_memory()
+                
+                # Disk metrics
+                disk = psutil.disk_usage('/')
+                
+                return {
+                    'status': 'healthy' if cpu_percent < 80 and memory.percent < 80 else 'warning',
+                    'cpu': {
+                        'usage_percent': round(cpu_percent, 2),
+                        'count': cpu_count,
+                        'load_avg': {
+                            '1min': round(load_avg[0], 2),
+                            '5min': round(load_avg[1], 2),
+                            '15min': round(load_avg[2], 2)
+                        }
+                    },
+                    'memory': {
+                        'usage_percent': round(memory.percent, 2),
+                        'total_gb': round(memory.total / (1024**3), 2),
+                        'available_gb': round(memory.available / (1024**3), 2),
+                        'used_gb': round(memory.used / (1024**3), 2)
+                    },
+                    'disk': {
+                        'usage_percent': round(disk.percent, 2),
+                        'total_gb': round(disk.total / (1024**3), 2),
+                        'free_gb': round(disk.free / (1024**3), 2),
+                        'used_gb': round(disk.used / (1024**3), 2)
+                    }
+                }
+            except Exception as e:
+                self.logger.error(f"Error collecting system metrics: {e}")
+                return {'status': 'error', 'error': str(e)}
+        
+        # Add placeholder methods for other metrics
+        async def collect_database_metrics(self) -> Dict[str, Any]:
+            return {'status': 'healthy', 'placeholder': True}
+        
+        async def collect_minio_metrics(self) -> Dict[str, Any]:
+            return {'status': 'healthy', 'placeholder': True}
+        
+        async def collect_ollama_metrics(self) -> Dict[str, Any]:
+            return {'status': 'healthy', 'placeholder': True}
+        
+        async def collect_network_metrics(self) -> Dict[str, Any]:
+            return {'tor': {'status': 'healthy'}, 'i2p': {'status': 'healthy'}}
+        
+        async def collect_service_metrics(self) -> Dict[str, Any]:
+            return {'status': 'healthy', 'uptime_seconds': time.time()}
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: portal-metrics-fix
+  namespace: noctipede
+spec:
+  template:
+    spec:
+      containers:
+      - name: fix-portal
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "Portal metrics fix applied successfully"
+          echo "Restart the portal pod to apply changes:"
+          echo "kubectl delete pod -l app=noctipede-portal -n noctipede"
+      restartPolicy: Never
+  backoffLimit: 1

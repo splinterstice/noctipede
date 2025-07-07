@@ -73,7 +73,8 @@ class TextAnalyzer(BaseAnalyzer):
         response = self.call_ollama_api(
             model=self.settings.ollama_text_model,
             prompt=prompt,
-            system_prompt=system_prompt
+            system_prompt=system_prompt,
+            request_type="sentiment_analysis"
         )
         
         if response and 'response' in response:

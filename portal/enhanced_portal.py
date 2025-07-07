@@ -401,15 +401,15 @@ class EnhancedMetricsCollector(SystemMetricsCollector):
     async def collect_network_connectivity(self) -> Dict[str, Any]:
         """Test network connectivity to proxies using proper protocols"""
         connectivity = {
-            'tor': {'status': 'unknown', 'connectivity': False},
-            'i2p': {'status': 'unknown', 'connectivity': False}
+            'tor': {'status': 'unknown', 'connectivity': False, 'proxy_connectivity': False},
+            'i2p': {'status': 'unknown', 'connectivity': False, 'proxy_connectivity': False}
         }
         
         # Test Tor SOCKS5 proxy with basic connectivity test
         try:
-            # Simple connectivity test - check if we can connect to the SOCKS port
+            # Simple connectivity test - check if we can connect to the SOCKS port (9150 in our setup)
             reader, writer = await asyncio.wait_for(
-                asyncio.open_connection('tor-proxy', 9050),
+                asyncio.open_connection('tor-proxy', 9150),
                 timeout=5.0
             )
             writer.close()
@@ -418,67 +418,98 @@ class EnhancedMetricsCollector(SystemMetricsCollector):
             connectivity['tor'] = {
                 'status': 'connected',
                 'connectivity': True,
+                'proxy_connectivity': True,
                 'details': 'SOCKS5 port accessible',
                 'proxy_host': 'tor-proxy',
-                'proxy_port': 9050
+                'proxy_port': 9150
             }
         except Exception as e:
             connectivity['tor'] = {
                 'status': 'error',
                 'connectivity': False,
+                'proxy_connectivity': False,
                 'error': f'SOCKS5 connection failed: {str(e)}'
             }
         
-        # Test I2P HTTP proxy with proper status checking
+        # Test I2P HTTP proxy with comprehensive status checking
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
-                # First check if I2P console is accessible
-                console_accessible = False
-                try:
+            # First check if I2P console is accessible
+            console_accessible = False
+            try:
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
                     async with session.get('http://i2p-proxy:7070/', timeout=aiohttp.ClientTimeout(total=3)) as console_response:
                         console_accessible = console_response.status == 200
-                except:
-                    console_accessible = False
-                
-                # Test HTTP proxy functionality
+            except:
+                console_accessible = False
+            
+            # Test HTTP proxy functionality - this is the key test
+            proxy_accessible = False
+            proxy_error = None
+            try:
+                # Test if we can connect to the HTTP proxy port
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection('i2p-proxy', 4444),
+                    timeout=3.0
+                )
+                writer.close()
+                await writer.wait_closed()
+                proxy_accessible = True
+            except Exception as proxy_e:
+                proxy_error = str(proxy_e)
+                proxy_accessible = False
+            
+            # Now test if we can actually use the proxy to access I2P sites
+            network_accessible = False
+            network_error = None
+            if proxy_accessible:
                 try:
-                    # Simple connectivity test to the proxy port
-                    reader, writer = await asyncio.wait_for(
-                        asyncio.open_connection('i2p-proxy', 4444),
-                        timeout=3.0
-                    )
-                    writer.close()
-                    await writer.wait_closed()
-                    
-                    connectivity['i2p'] = {
-                        'status': 'connected',
-                        'connectivity': True,
-                        'proxy_working': True,
-                        'console_accessible': console_accessible,
-                        'details': 'HTTP proxy port accessible'
-                    }
-                except Exception as proxy_e:
-                    # Check if it's just a connection refused (proxy not ready)
-                    if 'Connection refused' in str(proxy_e) or 'Connect call failed' in str(proxy_e):
-                        connectivity['i2p'] = {
-                            'status': 'starting',
-                            'connectivity': False,
-                            'console_accessible': console_accessible,
-                            'details': 'I2P router starting, HTTP proxy not ready yet',
-                            'error': 'HTTP proxy port not accessible'
-                        }
-                    else:
-                        connectivity['i2p'] = {
-                            'status': 'error',
-                            'connectivity': False,
-                            'console_accessible': console_accessible,
-                            'error': f'HTTP proxy test failed: {str(proxy_e)}'
-                        }
+                    # Test actual I2P network access through the proxy
+                    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+                        proxy_url = 'http://i2p-proxy:4444'
+                        async with session.get(
+                            'http://reg.i2p/',
+                            proxy=proxy_url,
+                            timeout=aiohttp.ClientTimeout(total=10)
+                        ) as response:
+                            network_accessible = response.status == 200
+                except Exception as net_e:
+                    network_error = str(net_e)
+                    network_accessible = False
+            
+            # Determine overall I2P status
+            if proxy_accessible and network_accessible:
+                connectivity['i2p'] = {
+                    'status': 'connected',
+                    'connectivity': True,
+                    'proxy_connectivity': True,
+                    'console_accessible': console_accessible,
+                    'details': 'I2P proxy working, network accessible',
+                    'test_site': 'reg.i2p'
+                }
+            elif proxy_accessible and not network_accessible:
+                connectivity['i2p'] = {
+                    'status': 'starting',
+                    'connectivity': False,
+                    'proxy_connectivity': True,
+                    'console_accessible': console_accessible,
+                    'details': 'I2P proxy accessible but network not ready (bootstrapping)',
+                    'network_error': network_error
+                }
+            else:
+                connectivity['i2p'] = {
+                    'status': 'error',
+                    'connectivity': False,
+                    'proxy_connectivity': False,
+                    'console_accessible': console_accessible,
+                    'details': 'I2P proxy not accessible',
+                    'error': proxy_error
+                }
                         
         except Exception as e:
             connectivity['i2p'] = {
                 'status': 'error',
                 'connectivity': False,
+                'proxy_connectivity': False,
                 'error': f'I2P test failed: {str(e)}'
             }
         
@@ -608,6 +639,111 @@ async def get_service_pressure():
         metrics = await enhanced_collector.calculate_service_pressure()
         return JSONResponse(content=metrics)
     except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+# NEW: Proxy Status API Endpoints
+def check_tor_proxy_status() -> Dict[str, Any]:
+    """Check Tor proxy status"""
+    try:
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        result = sock.connect_ex(('tor-proxy', 9150))
+        sock.close()
+        
+        if result == 0:
+            return {
+                "ready": True,
+                "status": "ready",
+                "message": "Tor proxy is ready",
+                "port_open": True
+            }
+        else:
+            return {
+                "ready": False,
+                "status": "not_ready", 
+                "message": "Tor proxy port is not accessible",
+                "port_open": False
+            }
+    except Exception as e:
+        return {
+            "ready": False,
+            "status": "error",
+            "message": f"Error checking Tor proxy: {str(e)}",
+            "port_open": False
+        }
+
+def check_i2p_proxy_status() -> Dict[str, Any]:
+    """Check I2P proxy status"""
+    try:
+        import requests
+        response = requests.get("http://i2p-proxy:4444", timeout=10)
+        
+        if response.status_code == 200 or "I2Pd HTTP proxy" in response.text:
+            return {
+                "ready": True,
+                "status": "proxy_ready",
+                "message": "I2P HTTP proxy is ready",
+                "http_proxy": True,
+                "console_accessible": False
+            }
+        else:
+            return {
+                "ready": False,
+                "status": "not_ready",
+                "message": "I2P proxy is not responding",
+                "http_proxy": False,
+                "console_accessible": False
+            }
+    except Exception as e:
+        return {
+            "ready": False,
+            "status": "error",
+            "message": f"Error checking I2P proxy: {str(e)}",
+            "http_proxy": False,
+            "console_accessible": False
+        }
+
+@app.get("/api/proxy-status")
+async def get_proxy_status():
+    """Get current proxy status for both Tor and I2P"""
+    try:
+        tor_status = check_tor_proxy_status()
+        i2p_status = check_i2p_proxy_status()
+        
+        return JSONResponse(content={
+            "tor": tor_status,
+            "i2p": i2p_status,
+            "both_ready": tor_status["ready"] and i2p_status["ready"],
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Error getting proxy status: {e}")
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.get("/api/proxy-readiness")
+async def check_proxy_readiness():
+    """Check if both proxies are ready for crawling (used by crawler automation)"""
+    try:
+        tor_status = check_tor_proxy_status()
+        i2p_status = check_i2p_proxy_status()
+        
+        tor_ready = tor_status["ready"]
+        i2p_ready = i2p_status["ready"]
+        
+        return JSONResponse(content={
+            "tor_ready": tor_ready,
+            "i2p_ready": i2p_ready,
+            "both_ready": tor_ready and i2p_ready,
+            "readiness_percentage": {
+                "tor": 100 if tor_ready else 0,
+                "i2p": 100 if i2p_ready else 0,
+                "overall": 100 if (tor_ready and i2p_ready) else (50 if (tor_ready or i2p_ready) else 0)
+            },
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Error checking proxy readiness: {e}")
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.on_event("startup")

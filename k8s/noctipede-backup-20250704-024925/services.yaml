@@ -1,0 +1,374 @@
+apiVersion: v1
+items:
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app":"i2p-proxy","component":"proxy"},"name":"i2p-proxy","namespace":"noctipede"},"spec":{"ports":[{"name":"http-proxy","port":4444,"protocol":"TCP","targetPort":4444},{"name":"web-console","port":7070,"protocol":"TCP","targetPort":7070},{"name":"sam-interface","port":7656,"protocol":"TCP","targetPort":7656}],"selector":{"app":"i2p-proxy"},"type":"ClusterIP"}}
+    creationTimestamp: "2025-07-04T09:41:59Z"
+    labels:
+      app: i2p-proxy
+      component: proxy
+    name: i2p-proxy
+    namespace: noctipede
+    resourceVersion: "2052737"
+    uid: 2c36dc0c-6781-4c21-aa91-b3c36ed44be7
+  spec:
+    clusterIP: 10.43.238.5
+    clusterIPs:
+    - 10.43.238.5
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: http-proxy
+      port: 4444
+      protocol: TCP
+      targetPort: 4444
+    - name: web-console
+      port: 7070
+      protocol: TCP
+      targetPort: 7070
+    - name: sam-interface
+      port: 7656
+      protocol: TCP
+      targetPort: 7656
+    selector:
+      app: i2p-proxy
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    creationTimestamp: "2025-07-04T09:41:18Z"
+    name: mariadb
+    namespace: noctipede
+    ownerReferences:
+    - apiVersion: k8s.mariadb.com/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: MariaDB
+      name: mariadb
+      uid: c20e0924-3f42-4765-959c-aaf63cfb6fd1
+    resourceVersion: "2051717"
+    uid: f6a2b7e4-49d7-48a3-98ad-2f1ddc60f293
+  spec:
+    clusterIP: 10.43.23.145
+    clusterIPs:
+    - 10.43.23.145
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: mariadb
+      port: 3306
+      protocol: TCP
+      targetPort: 3306
+    selector:
+      app.kubernetes.io/instance: mariadb
+      app.kubernetes.io/name: mariadb
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    creationTimestamp: "2025-07-04T09:41:18Z"
+    name: mariadb-internal
+    namespace: noctipede
+    ownerReferences:
+    - apiVersion: k8s.mariadb.com/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: MariaDB
+      name: mariadb
+      uid: c20e0924-3f42-4765-959c-aaf63cfb6fd1
+    resourceVersion: "2051712"
+    uid: 15e7146f-1a24-4033-a527-958d68a0194f
+  spec:
+    clusterIP: None
+    clusterIPs:
+    - None
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: mariadb
+      port: 3306
+      protocol: TCP
+      targetPort: 3306
+    publishNotReadyAddresses: true
+    selector:
+      app.kubernetes.io/instance: mariadb
+      app.kubernetes.io/name: mariadb
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    creationTimestamp: "2025-07-04T09:41:56Z"
+    labels:
+      app.kubernetes.io/instance: mariadb-metrics
+      app.kubernetes.io/name: exporter
+    name: mariadb-metrics
+    namespace: noctipede
+    ownerReferences:
+    - apiVersion: k8s.mariadb.com/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: MariaDB
+      name: mariadb
+      uid: c20e0924-3f42-4765-959c-aaf63cfb6fd1
+    resourceVersion: "2052641"
+    uid: f4dc6dfb-5826-4fb9-a9c4-71bbea2164bd
+  spec:
+    clusterIP: 10.43.153.39
+    clusterIPs:
+    - 10.43.153.39
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: metrics
+      port: 9104
+      protocol: TCP
+      targetPort: 9104
+    selector:
+      app.kubernetes.io/instance: mariadb-metrics
+      app.kubernetes.io/name: exporter
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app":"minio"},"name":"minio","namespace":"noctipede"},"spec":{"ports":[{"name":"api","port":9000,"targetPort":9000},{"name":"console","port":9001,"targetPort":9001}],"selector":{"app":"minio"},"type":"ClusterIP"}}
+    creationTimestamp: "2025-07-04T09:41:19Z"
+    labels:
+      app: minio
+    name: minio
+    namespace: noctipede
+    resourceVersion: "2051804"
+    uid: b4dd0cd0-a7d7-4ff3-83ca-8963a730b848
+  spec:
+    clusterIP: 10.43.16.133
+    clusterIPs:
+    - 10.43.16.133
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: api
+      port: 9000
+      protocol: TCP
+      targetPort: 9000
+    - name: console
+      port: 9001
+      protocol: TCP
+      targetPort: 9001
+    selector:
+      app: minio
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app":"minio"},"name":"minio-console","namespace":"noctipede"},"spec":{"ports":[{"name":"console","port":9001,"targetPort":9001}],"selector":{"app":"minio"},"type":"LoadBalancer"}}
+    creationTimestamp: "2025-07-04T09:41:19Z"
+    finalizers:
+    - service.kubernetes.io/load-balancer-cleanup
+    labels:
+      app: minio
+    name: minio-console
+    namespace: noctipede
+    resourceVersion: "2051896"
+    uid: 37fd531d-f1f5-423d-8fb3-350da1bb6eb5
+  spec:
+    allocateLoadBalancerNodePorts: true
+    clusterIP: 10.43.89.240
+    clusterIPs:
+    - 10.43.89.240
+    externalTrafficPolicy: Cluster
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: console
+      nodePort: 31527
+      port: 9001
+      protocol: TCP
+      targetPort: 9001
+    selector:
+      app: minio
+    sessionAffinity: None
+    type: LoadBalancer
+  status:
+    loadBalancer:
+      ingress:
+      - ip: 10.1.1.12
+        ipMode: VIP
+      - ip: 10.1.1.13
+        ipMode: VIP
+      - ip: 10.1.1.14
+        ipMode: VIP
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app":"noctipede-app","component":"crawler"},"name":"noctipede-app-service","namespace":"noctipede"},"spec":{"ports":[{"name":"http","port":8080,"protocol":"TCP","targetPort":8080}],"selector":{"app":"noctipede-app"},"type":"ClusterIP"}}
+    creationTimestamp: "2025-07-04T09:42:58Z"
+    labels:
+      app: noctipede-app
+      component: crawler
+    name: noctipede-app-service
+    namespace: noctipede
+    resourceVersion: "2053754"
+    uid: 7d8b914f-4a71-4b68-a136-c1007d36ed81
+  spec:
+    clusterIP: 10.43.156.235
+    clusterIPs:
+    - 10.43.156.235
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: http
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      app: noctipede-app
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app":"noctipede-portal","component":"web"},"name":"noctipede-portal-service","namespace":"noctipede"},"spec":{"ports":[{"name":"http","port":8080,"protocol":"TCP","targetPort":8080}],"selector":{"app":"noctipede-portal"},"sessionAffinity":"None","type":"LoadBalancer"}}
+    creationTimestamp: "2025-07-04T09:42:58Z"
+    finalizers:
+    - service.kubernetes.io/load-balancer-cleanup
+    labels:
+      app: noctipede-portal
+      component: web
+    name: noctipede-portal-service
+    namespace: noctipede
+    resourceVersion: "2053729"
+    uid: fa599342-79fc-48ec-99e5-e88f7a224a3b
+  spec:
+    allocateLoadBalancerNodePorts: true
+    clusterIP: 10.43.34.169
+    clusterIPs:
+    - 10.43.34.169
+    externalTrafficPolicy: Cluster
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: http
+      nodePort: 30770
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      app: noctipede-portal
+    sessionAffinity: None
+    type: LoadBalancer
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app":"noctipede-portal","component":"web"},"name":"noctipede-portal-service-fixed","namespace":"noctipede"},"spec":{"ports":[{"name":"http","nodePort":32421,"port":8080,"protocol":"TCP","targetPort":8080}],"selector":{"app":"noctipede-portal"},"type":"NodePort"}}
+    creationTimestamp: "2025-07-04T09:42:58Z"
+    labels:
+      app: noctipede-portal
+      component: web
+    name: noctipede-portal-service-fixed
+    namespace: noctipede
+    resourceVersion: "2053669"
+    uid: 3cf3e636-6908-49f4-a79e-4aed1fb9911d
+  spec:
+    clusterIP: 10.43.53.30
+    clusterIPs:
+    - 10.43.53.30
+    externalTrafficPolicy: Cluster
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: http
+      nodePort: 32421
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      app: noctipede-portal
+    sessionAffinity: None
+    type: NodePort
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app":"tor-proxy","component":"proxy"},"name":"tor-proxy","namespace":"noctipede"},"spec":{"ports":[{"name":"socks-proxy","port":9150,"protocol":"TCP","targetPort":9150}],"selector":{"app":"tor-proxy"},"type":"ClusterIP"}}
+    creationTimestamp: "2025-07-04T09:42:00Z"
+    labels:
+      app: tor-proxy
+      component: proxy
+    name: tor-proxy
+    namespace: noctipede
+    resourceVersion: "2052773"
+    uid: 7fc8f4d2-4e95-4c8f-b7e3-3a2478e51ed2
+  spec:
+    clusterIP: 10.43.246.155
+    clusterIPs:
+    - 10.43.246.155
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: socks-proxy
+      port: 9150
+      protocol: TCP
+      targetPort: 9150
+    selector:
+      app: tor-proxy
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+kind: List
+metadata:
+  resourceVersion: ""
