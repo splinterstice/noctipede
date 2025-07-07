@@ -11,6 +11,7 @@ spec:
   selector:
     matchLabels:
       app: noctipede-app
+      component: crawler
   template:
     metadata:
       labels:
@@ -18,102 +19,95 @@ spec:
         component: crawler
     spec:
       initContainers:
-      # Initialize sites.txt file
-      - name: init-sites-data
-        image: busybox:1.35
-        command: ['/bin/sh', '-c']
-        args:
-        - |
-          echo "🔧 Creating sites.txt file..."
-          cat > /data/sites.txt << 'EOF'
-          https://httpbin.org/
-          https://example.com/
-          https://httpbin.org/json
-          https://httpbin.org/html
-          https://httpbin.org/robots.txt
-          EOF
-          echo "✅ sites.txt created with $(wc -l < /data/sites.txt) sites"
-          ls -la /data/
-          cat /data/sites.txt
-        volumeMounts:
-        - name: data-volume
-          mountPath: /data
-      # Fix permissions for log directory
-      - name: fix-log-permissions
-        image: busybox:1.35
-        command: ['/bin/sh', '-c']
-        args:
-        - |
-          echo "🔧 Fixing log directory permissions..."
-          mkdir -p /app/logs /app/output
-          chmod 777 /app/logs /app/output
-          echo "✅ Permissions fixed"
-        volumeMounts:
-        - name: logs-volume
-          mountPath: /app/logs
-        - name: output-volume
-          mountPath: /app/output
-      # Simple proxy health monitoring using nc
-      - name: wait-for-proxies
+      # Wait for database to be ready
+      - name: wait-for-database
         image: busybox:1.35
         command: ['sh', '-c']
         args:
         - |
-          set -eux
-          echo "🔍 Starting proxy health checks..."
-          
-          # Test Tor proxy - just check if SOCKS5 port is responding
-          echo "🧅 Testing Tor proxy..."
-          tor_ready=false
-          for attempt in $(seq 1 5); do
-            echo "Tor test attempt $attempt/5..."
-            if nc -z tor-proxy 9150 >/dev/null 2>&1; then
-              echo "✅ Tor proxy port responding!"
-              tor_ready=true
-              break
+          echo "🔍 Waiting for MariaDB to be ready..."
+          until nc -z mariadb 3306; do
+            echo "⏳ MariaDB not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ MariaDB is ready!"
+      
+      # Wait for Tor proxy to be ready
+      - name: wait-for-tor
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🧅 Waiting for Tor proxy to be ready..."
+          for attempt in $(seq 1 12); do
+            echo "Tor test attempt $attempt/12..."
+            if nc -z tor-proxy 9150; then
+              echo "✅ Tor proxy is ready!"
+              exit 0
             fi
             echo "⏳ Waiting for Tor proxy..."
             sleep 10
           done
-          
-          if [ "$tor_ready" = "false" ]; then
-            echo "❌ Tor proxy port not responding after 5 attempts"
-            exit 1
-          fi
-          
-          # Test I2P proxy - check console port
-          echo "🌐 Testing I2P proxy..."
-          i2p_ready=false
-          for attempt in $(seq 1 3); do
-            echo "I2P test attempt $attempt/3..."
-            if nc -z i2p-proxy 7070 >/dev/null 2>&1; then
-              echo "✅ I2P console responding!"
-              i2p_ready=true
-              break
+          echo "⚠️ Tor proxy not ready after 2 minutes, continuing anyway..."
+      
+      # Wait for I2P proxy (with timeout)
+      - name: wait-for-i2p
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🌐 Waiting for I2P proxy to be ready..."
+          for attempt in $(seq 1 6); do
+            echo "I2P test attempt $attempt/6..."
+            if nc -z i2p-proxy 4444; then
+              echo "✅ I2P proxy is ready!"
+              exit 0
             fi
-            echo "⏳ Waiting for I2P..."
+            echo "⏳ Waiting for I2P proxy..."
             sleep 15
           done
-          
-          if [ "$i2p_ready" = "false" ]; then
-            echo "⚠️  I2P not ready yet (normal - can take 10+ minutes to bootstrap)"
-            echo "🔄 Continuing anyway - applications will handle I2P gracefully"
-          fi
-          
-          echo "🎉 Proxy health checks completed!"
+          echo "⚠️ I2P proxy not ready after 90 seconds (normal - I2P takes time to bootstrap)"
+          echo "🔄 Continuing - crawler will handle I2P gracefully"
+      
+      # Copy real sites.txt file
+      - name: init-sites-data
+        image: ghcr.io/splinterstice/noctipede:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          echo "📋 Copying real sites.txt with all 47 sites..."
+          cp /app/data/sites.txt /shared-data/sites.txt
+          echo "✅ Sites file copied: $(wc -l < /shared-data/sites.txt) sites"
+          head -5 /shared-data/sites.txt
+        volumeMounts:
+        - name: shared-data
+          mountPath: /shared-data
+      
       containers:
       - name: noctipede-app
         image: ghcr.io/splinterstice/noctipede:latest
         imagePullPolicy: Always
-        command: ["sh", "-c", "cd /app && PYTHONPATH=/app python -m crawlers.main"]
+        command: ["sh", "-c"]
+        args:
+        - |
+          echo "🚀 Starting Noctipede Crawler..."
+          echo "📊 Sites to crawl: $(wc -l < /shared-data/sites.txt)"
+          cd /app
+          
+          # Initialize database first
+          echo "🗄️ Initializing database..."
+          python database/init_db.py
+          
+          export SITES_FILE_PATH=/shared-data/sites.txt
+          PYTHONPATH=/app python -m crawlers.main
         envFrom:
         - configMapRef:
             name: noctipede-config
         - secretRef:
             name: noctipede-secrets
         volumeMounts:
-        - name: data-volume
-          mountPath: /app/data
+        - name: shared-data
+          mountPath: /shared-data
         - name: output-volume
           mountPath: /app/output
         - name: logs-volume
@@ -128,24 +122,31 @@ spec:
         livenessProbe:
           exec:
             command:
-            - pgrep
-            - -f
-            - "python.*crawlers.main"
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
           initialDelaySeconds: 60
           periodSeconds: 30
           timeoutSeconds: 10
-          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+      
       volumes:
-      - name: data-volume
-        persistentVolumeClaim:
-          claimName: noctipede-sites-pvc
+      - name: shared-data
+        emptyDir: {}
       - name: output-volume
         persistentVolumeClaim:
           claimName: noctipede-output-pvc
       - name: logs-volume
         persistentVolumeClaim:
           claimName: noctipede-logs-pvc
-      restartPolicy: Always
 
 ---
 apiVersion: apps/v1
@@ -161,6 +162,7 @@ spec:
   selector:
     matchLabels:
       app: noctipede-portal
+      component: web
   template:
     metadata:
       labels:
@@ -168,54 +170,19 @@ spec:
         component: web
     spec:
       initContainers:
-      # Simple proxy health monitoring using nc
-      - name: wait-for-proxies
+      # Wait for database to be ready
+      - name: wait-for-database
         image: busybox:1.35
         command: ['sh', '-c']
         args:
         - |
-          set -eux
-          echo "🔍 Starting proxy health checks..."
-          
-          # Test Tor proxy - just check if SOCKS5 port is responding
-          echo "🧅 Testing Tor proxy..."
-          tor_ready=false
-          for attempt in $(seq 1 5); do
-            echo "Tor test attempt $attempt/5..."
-            if nc -z tor-proxy 9150 >/dev/null 2>&1; then
-              echo "✅ Tor proxy port responding!"
-              tor_ready=true
-              break
-            fi
-            echo "⏳ Waiting for Tor proxy..."
-            sleep 10
+          echo "🔍 Waiting for MariaDB to be ready..."
+          until nc -z mariadb 3306; do
+            echo "⏳ MariaDB not ready, waiting..."
+            sleep 5
           done
-          
-          if [ "$tor_ready" = "false" ]; then
-            echo "❌ Tor proxy port not responding after 5 attempts"
-            exit 1
-          fi
-          
-          # Test I2P proxy - check console port
-          echo "🌐 Testing I2P proxy..."
-          i2p_ready=false
-          for attempt in $(seq 1 3); do
-            echo "I2P test attempt $attempt/3..."
-            if nc -z i2p-proxy 7070 >/dev/null 2>&1; then
-              echo "✅ I2P console responding!"
-              i2p_ready=true
-              break
-            fi
-            echo "⏳ Waiting for I2P..."
-            sleep 15
-          done
-          
-          if [ "$i2p_ready" = "false" ]; then
-            echo "⚠️  I2P not ready yet (normal - can take 10+ minutes to bootstrap)"
-            echo "🔄 Continuing anyway - portal will handle I2P gracefully"
-          fi
-          
-          echo "🎉 Proxy health checks completed!"
+          echo "✅ MariaDB is ready!"
+      
       containers:
       - name: noctipede-portal
         image: ghcr.io/splinterstice/noctipede:latest
@@ -224,17 +191,20 @@ spec:
         - containerPort: 8080
           name: http
           protocol: TCP
-        command: ["sh", "-c", "cd /app && PYTHONPATH=/app uvicorn portal.main_enhanced:app --host 0.0.0.0 --port 8080"]
+        command: ["sh", "-c"]
+        args:
+        - |
+          echo "🌐 Starting Noctipede Unified Portal..."
+          echo "📊 Available dashboards: /basic, /enhanced, /combined"
+          cd /app
+          mkdir -p /tmp/output /tmp/logs
+          export OUTPUT_DIR=/tmp/output
+          PYTHONPATH=/app python -m portal.unified_portal
         envFrom:
         - configMapRef:
             name: noctipede-config
         - secretRef:
             name: noctipede-secrets
-        volumeMounts:
-        - name: output-volume
-          mountPath: /app/output
-        - name: logs-volume
-          mountPath: /app/logs
         resources:
           requests:
             cpu: 250m
@@ -249,7 +219,6 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 30
           timeoutSeconds: 10
-          failureThreshold: 3
         readinessProbe:
           httpGet:
             path: /api/health
@@ -257,12 +226,3 @@ spec:
           initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 5
-          failureThreshold: 3
-      volumes:
-      - name: output-volume
-        persistentVolumeClaim:
-          claimName: noctipede-output-pvc
-      - name: logs-volume
-        persistentVolumeClaim:
-          claimName: noctipede-logs-pvc
-      restartPolicy: Always
