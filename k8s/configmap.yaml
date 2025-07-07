@@ -10,16 +10,44 @@ data:
   MARIADB_USER: "splinter-research"
   MARIADB_DATABASE: "splinter-research"
   
-  # MinIO Configuration
-  MINIO_ENDPOINT: "minio.noctipede:9000"
+  # MinIO Configuration - FIXED ENDPOINT
+  MINIO_ENDPOINT: "minio:9000"
   MINIO_BUCKET_NAME: "noctipede-data"
   MINIO_SECURE: "false"
   
-  # AI/Ollama Configuration
-  OLLAMA_ENDPOINT: "http://ollama:11434"
-  OLLAMA_VISION_MODEL: "llama3.2-vision:11b"
-  OLLAMA_TEXT_MODEL: "gemma3:12b"
-  OLLAMA_MODERATION_MODEL: "llama3.1:8b"
+  # AI/Ollama Configuration - Optimized for immediate model swapping
+  OLLAMA_ENDPOINT: "http://ollama.ollama-service.svc.cluster.local:11434"
+  OLLAMA_VISION_MODEL: "llama3.2-vision"
+  OLLAMA_TEXT_MODEL: "noctipede-text"
+  OLLAMA_MODERATION_MODEL: "noctipede-moderation"
+  OLLAMA_KEEP_ALIVE: "5s"  # Very aggressive unloading
+  OLLAMA_CONCURRENT_REQUESTS: "1"  # Sequential for model swapping
+  OLLAMA_TIMEOUT: "30s"  # Fast timeout for model loading
+  
+  # AI Analysis Configuration - NEW: Enable/disable AI features
+  AI_ANALYSIS_ENABLED: "true"           # Master switch for all AI analysis
+  AI_TEXT_ANALYSIS_ENABLED: "true"      # Enable AI text content analysis
+  AI_IMAGE_ANALYSIS_ENABLED: "true"     # Enable AI image analysis
+  AI_CONTENT_MODERATION_ENABLED: "true" # Enable AI content moderation
+  AI_REPORTS_ENABLED: "true"            # Enable AI-powered reports in portal
+  AI_BATCH_SIZE: "10"                   # Number of items to process in AI batch
+  AI_RETRY_ATTEMPTS: "3"                # Number of retry attempts for AI requests
+  AI_REQUEST_TIMEOUT: "60"              # Timeout for AI requests in seconds
+  AI_QUEUE_MAX_SIZE: "100"              # Maximum size of AI processing queue
+  
+  # Content Analysis Configuration - Enhanced with AI options
+  CONTENT_ANALYSIS_ENABLED: "true"      # Legacy compatibility
+  IMAGE_ANALYSIS_ENABLED: "true"        # Legacy compatibility  
+  MODERATION_THRESHOLD: "30"            # Threshold for content moderation (0-100)
+  MAX_IMAGE_SIZE_MB: "50"               # Maximum image size for AI analysis
+  SUPPORTED_IMAGE_FORMATS: "webp,jpg,jpeg,png,gif,bmp,tiff,svg"
+  
+  # AI Model Configuration - Fine-tuning options
+  AI_VISION_MODEL_TEMPERATURE: "0.1"    # Temperature for vision model (0.0-1.0)
+  AI_TEXT_MODEL_TEMPERATURE: "0.2"      # Temperature for text model (0.0-1.0)
+  AI_MODERATION_MODEL_TEMPERATURE: "0.0" # Temperature for moderation (strict)
+  AI_MAX_TOKENS: "2048"                 # Maximum tokens per AI response
+  AI_CONTEXT_WINDOW: "4096"             # Context window size for AI models
   
   # Crawler Configuration - Updated to match Docker Compose
   MAX_LINKS_PER_PAGE: "500"  # Updated to match Docker Compose
@@ -31,13 +59,17 @@ data:
   RECENT_CRAWL_HOURS: "24"
   MAX_CONCURRENT_CRAWLERS: "10"
   
-  # Network Configuration - Updated to match Docker Compose
+  # Network Configuration - Updated timeout handling for I2P
   TOR_PROXY_HOST: "tor-proxy"
   TOR_PROXY_PORT: "9150"  # Updated to match Docker Compose internal port
   I2P_PROXY_HOST: "i2p-proxy"
   I2P_PROXY_PORT: "4444"
   USE_I2P_INTERNAL_PROXIES: "true"  # Enable I2P internal proxy fallback
-  I2P_INTERNAL_PROXIES: "notbob.i2p,purokishi.i2p,false.i2p,stormycloud.i2p"  # Match Docker Compose
+  I2P_INTERNAL_PROXIES: "notbob.i2p,purokishi.i2p,false.i2p,stormycloud.i2p,reg.i2p,identiguy.i2p,stats.i2p,i2p-projekt.i2p,forum.i2p,zzz.i2p,echelon.i2p,planet.i2p,i2pwiki.i2p,tracker2.postman.i2p,diftracker.i2p"  # Comprehensive list of 15 internal proxies
+  I2P_NETWORK_TIMEOUT: "15"  # Timeout for I2P network readiness check
+  I2P_SITE_TIMEOUT: "30"     # Timeout for individual I2P site access
+  I2P_FALLBACK_ENABLED: "true"  # Enable fallback to internal proxies
+  I2P_MAX_RETRIES: "3"      # Maximum retries per site
   
   # Application Configuration
   LOG_LEVEL: "INFO"
@@ -46,15 +78,15 @@ data:
   WEB_SERVER_PORT: "8080"
   WEB_SERVER_HOST: "0.0.0.0"
   
-  # Content Analysis Configuration
-  CONTENT_ANALYSIS_ENABLED: "true"
-  IMAGE_ANALYSIS_ENABLED: "true"
-  MODERATION_THRESHOLD: "30"
-  MAX_IMAGE_SIZE_MB: "10"
-  SUPPORTED_IMAGE_FORMATS: "webp,jpg,jpeg,png,gif,bmp,tiff,svg"
-  
   # Performance Configuration
   DB_POOL_SIZE: "20"
   DB_MAX_OVERFLOW: "30"
   WORKER_THREADS: "4"
   BATCH_SIZE: "100"
+  
+  # Portal Configuration - NEW: Dashboard options
+  PORTAL_TYPE: "unified"                 # Portal type: unified, basic, enhanced, combined
+  PORTAL_DEFAULT_DASHBOARD: "combined"   # Default dashboard to show
+  PORTAL_ENABLE_AI_REPORTS: "true"       # Enable AI reports in portal
+  PORTAL_METRICS_CACHE_SECONDS: "30"     # Cache duration for metrics
+  PORTAL_AUTO_REFRESH_SECONDS: "60"      # Auto-refresh interval for dashboards
