@@ -681,8 +681,8 @@
         
         function createNetworkCard(data) {
             // Check if both services are actually working based on evidence
-            const torWorking = data.tor?.connectivity || data.tor?.status === 'connected';
-            const i2pWorking = data.i2p?.connectivity || data.i2p?.status === 'healthy';
+            const torWorking = data.network?.tor?.connectivity || data.network?.tor?.status === 'connected';
+            const i2pWorking = data.network?.i2p?.connectivity || data.network?.i2p?.status === 'healthy';
             const bothWorking = torWorking && i2pWorking;
             
             return `
@@ -694,33 +694,33 @@
                     
                     <div class="metric-label">Tor Network</div>
                     <div class="service-item">
-                        <div class="status-indicator ${getStatusClass(data.tor?.status)}"></div>
+                        <div class="status-indicator ${getStatusClass(data.network?.tor?.status)}"></div>
                         <div>
-                            <div>Status: ${data.tor?.status || 'Unknown'}</div>
+                            <div>Status: ${data.network?.tor?.status || 'Unknown'}</div>
                             <div style="font-size: 0.8rem; opacity: 0.8;">
-                                ${data.tor?.connectivity ? '✅ Connected' : '❌ Disconnected'}
-                                ${data.tor?.is_tor ? ' | Tor IP Confirmed' : ''}
+                                ${data.network?.tor?.connectivity ? '✅ Connected' : '❌ Disconnected'}
+                                ${data.network?.tor?.is_tor ? ' | Tor IP Confirmed' : ''}
                             </div>
                         </div>
                     </div>
                     
                     <div class="metric-label" style="margin-top: 15px;">I2P Network</div>
                     <div class="service-item">
-                        <div class="status-indicator ${getStatusClass(data.i2p?.status)}"></div>
+                        <div class="status-indicator ${getStatusClass(data.network?.i2p?.status)}"></div>
                         <div>
-                            <div>Status: ${data.i2p?.status || 'Unknown'}</div>
+                            <div>Status: ${data.network?.i2p?.status || 'Unknown'}</div>
                             <div style="font-size: 0.8rem; opacity: 0.8;">
-                                Proxy: ${data.i2p?.proxy_connectivity ? '✅ Connected' : '❌ Disconnected'}<br>
-                                Network: ${data.i2p?.connectivity ? '✅ Connected' : '❌ Disconnected'}
+                                Proxy: ${data.network?.i2p?.proxy_working ? '✅ Connected' : '❌ Disconnected'}<br>
+                                Network: ${data.network?.i2p?.connectivity ? '✅ Connected' : '❌ Disconnected'}
                             </div>
                         </div>
                     </div>
                     
-                    ${!bothWorking && (data.tor?.error || data.i2p?.error) ? `
+                    ${!bothWorking && (data.network?.tor?.error || data.network?.i2p?.error) ? `
                         <div class="metric-label" style="margin-top: 15px;">Connection Issues</div>
                         <div class="error-log">
-                            ${!torWorking && data.tor?.error ? `<div>Tor: ${data.tor.error}</div>` : ''}
-                            ${!i2pWorking && data.i2p?.error ? `<div>I2P: ${data.i2p.error}</div>` : ''}
+                            ${!torWorking && data.network?.tor?.error ? `<div>Tor: ${data.network.tor.error}</div>` : ''}
+                            ${!i2pWorking && data.network?.i2p?.error ? `<div>I2P: ${data.network.i2p.error}</div>` : ''}
                         </div>
                         </div>
                     ` : ''}
