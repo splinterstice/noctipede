@@ -80,6 +80,34 @@
             margin-bottom: 30px;
         }
 
+        .metric-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .metric-item {
+            flex: 1;
+        }
+        
+        .metric-subtext {
+            font-size: 0.8rem;
+            opacity: 0.7;
+            margin-top: 2px;
+        }
+        
+        .status-healthy {
+            color: #4CAF50;
+        }
+        
+        .status-warning {
+            color: #FF9800;
+        }
+        
+        .status-error {
+            color: #f44336;
+        }
+        
         .metric-card {
             background: rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
@@ -205,6 +233,37 @@
         .service-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .model-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .model-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+        
+        .model-name {
+            font-family: 'Courier New', monospace;
+            color: #e0e0e0;
+        }
+        
+        .model-status {
+            font-size: 0.8rem;
+        }
             gap: 15px;
             margin: 15px 0;
         }
@@ -296,9 +355,9 @@
         
         // Create metric cards
         function createSystemCard(data) {
-            const cpuClass = getProgressClass(data.cpu?.percent || 0);
-            const memoryClass = getProgressClass(data.memory?.percent || 0);
-            const diskClass = getProgressClass(data.disk?.percent || 0);
+            const cpuClass = getProgressClass(data.cpu?.usage_percent || 0);
+            const memoryClass = getProgressClass(data.memory?.usage_percent || 0);
+            const diskClass = getProgressClass(data.disk?.usage_percent || 0);
             
             return `
                 <div class="metric-card">
@@ -308,35 +367,35 @@
                     </div>
                     
                     <div class="metric-label">CPU Usage</div>
-                    <div class="metric-value">${safeToFixed(data.cpu?.percent || 0, 1)}%</div>
+                    <div class="metric-value">${safeToFixed(data.cpu?.usage_percent || 0, 1)}%</div>
                     <div class="progress-bar">
-                        <div class="progress-fill ${cpuClass}" style="width: ${data.cpu?.percent || 0}%"></div>
+                        <div class="progress-fill ${cpuClass}" style="width: ${data.cpu?.usage_percent || 0}%"></div>
                     </div>
                     
                     <div class="metric-label">Memory Usage</div>
-                    <div class="metric-value">${safeToFixed(data.memory?.percent || 0, 1)}%</div>
+                    <div class="metric-value">${safeToFixed(data.memory?.usage_percent || 0, 1)}%</div>
                     <div class="progress-bar">
-                        <div class="progress-fill ${memoryClass}" style="width: ${data.memory?.percent || 0}%"></div>
+                        <div class="progress-fill ${memoryClass}" style="width: ${data.memory?.usage_percent || 0}%"></div>
                     </div>
                     
                     <div class="metric-label">Disk Usage</div>
-                    <div class="metric-value">${safeToFixed(data.disk?.percent || 0, 1)}%</div>
+                    <div class="metric-value">${safeToFixed(data.disk?.usage_percent || 0, 1)}%</div>
                     <div class="progress-bar">
-                        <div class="progress-fill ${diskClass}" style="width: ${data.disk?.percent || 0}%"></div>
+                        <div class="progress-fill ${diskClass}" style="width: ${data.disk?.usage_percent || 0}%"></div>
                     </div>
                     
                     <ul class="metric-list">
                         <li><span>CPU Cores</span><span>${data.cpu?.count || 'N/A'}</span></li>
-                        <li><span>Total Memory</span><span>${formatBytes(data.memory?.total || 0)}</span></li>
-                        <li><span>Available Memory</span><span>${formatBytes(data.memory?.available || 0)}</span></li>
-                        <li><span>Disk Free</span><span>${formatBytes(data.disk?.free || 0)}</span></li>
-                        <li><span>Processes</span><span>${formatNumber(data.processes || 0)}</span></li>
+                        <li><span>Total Memory</span><span>${safeToFixed(data.memory?.total_gb || 0, 1)} GB</span></li>
+                        <li><span>Available Memory</span><span>${safeToFixed(data.memory?.available_gb || 0, 1)} GB</span></li>
+                        <li><span>Disk Free</span><span>${safeToFixed(data.disk?.free_gb || 0, 1)} GB</span></li>
+                        <li><span>Load Average (1m)</span><span>${safeToFixed(data.cpu?.load_avg?.['1min'] || 0, 2)}</span></li>
                     </ul>
                 </div>
             `;
         }
         
-        function createDatabaseCard(dbData) {
+        function createDatabaseCard(dbData, fullData) {
             // Fix: dbData is already the database section from /api/metrics
             const connections = dbData.connections || {};
             const size = dbData.size || {};
@@ -352,9 +411,20 @@
             const pressureClass = bufferPressure < 10 ? 'progress-low' : bufferPressure < 30 ? 'progress-medium' : 'progress-high';
             const hitRatioClass = bufferHitRatio > 90 ? 'progress-low' : bufferHitRatio > 70 ? 'progress-medium' : 'progress-high';
             
-            // Determine status based on pressure
-            const status = pressure.status === 'normal' ? 'healthy' : 
-                          pressure.status === 'high' ? 'warning' : 'error';
+            // Determine status using the same logic as combined dashboard
+            let status = 'unknown';
+            // First try services section (most reliable)
+            if (fullData?.services?.database?.status) {
+                status = fullData.services.database.status;
+            } 
+            // Then try database section status
+            else if (dbData.status) {
+                status = dbData.status;
+            }
+            // Finally check if database has data (fallback)
+            else if (dbData.storage?.total_size_mb > 0) {
+                status = 'healthy';
+            }
             
             return `
                 <div class="metric-card">
@@ -388,26 +458,37 @@
                     <ul class="metric-list">
                         <li><span>Total Sites</span><span>${formatNumber((size.tables || []).find(t => t.name === 'sites')?.rows || 0)}</span></li>
                         <li><span>Total Pages</span><span>${formatNumber((size.tables || []).find(t => t.name === 'pages')?.rows || 0)}</span></li>
-                        <li><span>Media Files</span><span>${formatNumber((size.tables || []).find(t => t.name === 'media_files')?.rows || 0)}</span></li>
+                        <li><span>Media Files</span><span>${formatNumber(fullData.minio?.storage?.object_count || 0)}</span></li>
                     </ul>
                 </div>
             `;
         }
         
-        function createMinIOCard(minioData) {
-            // Fix: minioData is already the minio section from /api/metrics
+        function createMinIOCard(minioData, fullData) {
+            // Fix: Access MinIO data using the proper nested structure
             const storage = minioData.storage || {};
             const pressure = minioData.pressure || {};
+            const objectCount = storage.object_count || 0;
+            const totalSizeMB = storage.total_size_mb || 0;
+            const bucketExists = minioData.bucket_exists || false;
+            const fileTypes = storage.file_types || {};
             
-            const storageUsage = pressure.storage_usage_gb || 0;
-            const totalStorage = storage.total_size_gb || 0;
-            
-            // Fix: Better visual indicators - show usage as percentage of reasonable capacity
-            const usagePercent = totalStorage > 0 ? (storageUsage / Math.max(totalStorage, 10)) * 100 : storageUsage * 10;
+            // Calculate usage percentage based on total size
+            const usagePercent = Math.min((totalSizeMB / 1000) * 100, 100); // Show as percentage of 1GB
             const pressureClass = usagePercent < 30 ? 'progress-low' : usagePercent < 70 ? 'progress-medium' : 'progress-high';
             
             // Determine status
-            const status = minioData.health ? 'healthy' : 'error';
+            let status = minioData.status || 'unknown';
+            if (!minioData.connection) {
+                status = 'error';
+            } else if (!bucketExists) {
+                status = 'warning';
+            }
+            
+            // Get top file types
+            const topFileTypes = Object.entries(fileTypes)
+                .sort(([,a], [,b]) => b - a)
+                .slice(0, 5);
             
             return `
                 <div class="metric-card">
@@ -417,21 +498,47 @@
                     </div>
                     
                     <div class="metric-label">Storage Usage</div>
-                    <div class="metric-value">${safeToFixed(storageUsage, 2)} GB</div>
+                    <div class="metric-value">${safeToFixed(totalSizeMB, 1)} MB</div>
                     <div class="progress-bar">
                         <div class="progress-fill ${pressureClass}" style="width: ${Math.max(usagePercent, 5)}%"></div>
                     </div>
                     
                     <div class="metric-label">Object Count</div>
-                    <div class="metric-value">${formatNumber(storage.object_count || 0)}</div>
+                    <div class="metric-value">${formatNumber(objectCount)}</div>
                     
                     <ul class="metric-list">
-                        <li><span>Total Objects</span><span>${formatNumber(storage.object_count || 0)}</span></li>
-                        <li><span>Storage (MB)</span><span>${safeToFixed(storage.total_size_mb || 0, 1)}</span></li>
-                        <li><span>Bucket</span><span>${storage.bucket_name || 'N/A'}</span></li>
-                        <li><span>Health Status</span><span>${minioData.health ? '✅ Healthy' : '❌ Error'}</span></li>
-                        <li><span>Pressure Status</span><span>${pressure.status || 'normal'}</span></li>
+                        <li><span>Total Objects</span><span>${formatNumber(objectCount)}</span></li>
+                        <li><span>Storage Size</span><span>${safeToFixed(totalSizeMB, 1)} MB</span></li>
+                        <li><span>Storage (GB)</span><span>${safeToFixed(pressure.storage_usage_gb || 0, 2)} GB</span></li>
+                        <li><span>Bucket Status</span><span>${bucketExists ? '✅ Exists' : '❌ Missing'}</span></li>
+                        <li><span>Connection</span><span>${minioData.connection ? '✅ Connected' : '❌ Failed'}</span></li>
+                        <li><span>Bucket Name</span><span>${storage.bucket_name || 'N/A'}</span></li>
+                        ${minioData.error ? `<li><span>Error</span><span style="color: #f44336;">${minioData.error}</span></li>` : ''}
                     </ul>
+                    
+                    ${topFileTypes.length > 0 ? `
+                        <div class="metric-label" style="margin-top: 15px;">File Types</div>
+                        <div style="font-size: 0.8rem; opacity: 0.8; max-height: 60px; overflow-y: auto;">
+                            ${topFileTypes.map(([type, count]) => `
+                                <div style="margin: 2px 0; display: flex; justify-content: space-between;">
+                                    <span>.${type}</span>
+                                    <span>${count} files</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                    
+                    ${storage.largest_files && storage.largest_files.length > 0 ? `
+                        <div class="metric-label" style="margin-top: 15px;">Largest Files</div>
+                        <div style="font-size: 0.8rem; opacity: 0.8; max-height: 60px; overflow-y: auto;">
+                            ${storage.largest_files.slice(0, 3).map(file => `
+                                <div style="margin: 2px 0; display: flex; justify-content: space-between;">
+                                    <span title="${file.name}">${file.name.length > 20 ? file.name.substring(0, 20) + '...' : file.name}</span>
+                                    <span>${file.size_mb} MB</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
                 </div>
             `;
         }
@@ -444,7 +551,19 @@
 <!-- JavaScript continuation for enhanced dashboard -->
 <script>
         function createOllamaCard(data) {
-            const pressureClass = getProgressClass(data.pressure || 0);
+            const usageStats = data.usage_stats || {};
+            const totalRequests = data.total_requests || 0;
+            const modelsRunning = data.models_running || 0;
+            const modelsAvailable = data.models_available || 0;
+            
+            // Enhanced response time metrics
+            const responseTime = data.performance?.response_time_ms || usageStats.average_response_time_ms || 0;
+            const responseTimeClass = responseTime < 1000 ? 'status-healthy' : responseTime < 3000 ? 'status-warning' : 'status-error';
+            const responseTimeLabel = responseTime < 1000 ? 'Excellent' : responseTime < 3000 ? 'Good' : 'Slow';
+            
+            // Calculate activity percentage based on requests
+            const activityPercent = Math.min((totalRequests / 100) * 100, 100); // Scale to 100 max
+            const activityClass = activityPercent > 70 ? 'progress-high' : activityPercent > 30 ? 'progress-medium' : 'progress-low';
             
             return `
                 <div class="metric-card">
@@ -453,33 +572,46 @@
                         <div class="status-indicator ${getStatusClass(data.status)}"></div>
                     </div>
                     
-                    <div class="metric-label">Service Pressure</div>
-                    <div class="metric-value">${safeToFixed(data.pressure || 0, 1)}%</div>
-                    <div class="progress-bar">
-                        <div class="progress-fill ${pressureClass}" style="width: ${data.pressure || 0}%"></div>
+                    <div class="metric-row">
+                        <div class="metric-item">
+                            <div class="metric-label">Request Activity</div>
+                            <div class="metric-value">${formatNumber(totalRequests)} requests</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill ${activityClass}" style="width: ${Math.max(activityPercent, 5)}%"></div>
+                            </div>
+                        </div>
+                        <div class="metric-item">
+                            <div class="metric-label">Response Time</div>
+                            <div class="metric-value ${responseTimeClass}">${safeToFixed(responseTime, 0)}ms</div>
+                            <div class="metric-subtext">${responseTimeLabel}</div>
+                        </div>
                     </div>
                     
-                    ${data.performance?.response_time_ms ? `
-                        <div class="metric-label">Response Time</div>
-                        <div class="metric-value">${data.performance.response_time_ms} ms</div>
-                    ` : ''}
-                    
                     <ul class="metric-list">
-                        <li><span>Status</span><span>${data.status || 'Unknown'}</span></li>
-                        <li><span>Available Models</span><span>${data.models?.count || 0}</span></li>
-                        ${data.version ? `<li><span>Version</span><span>${data.version}</span></li>` : ''}
-                        ${data.performance?.last_test ? `<li><span>Last Test</span><span>${new Date(data.performance.last_test).toLocaleTimeString()}</span></li>` : ''}
+                        <li><span>Connection</span><span>${data.connection ? '✅ Connected' : '❌ Failed'}</span></li>
+                        <li><span>Models Available</span><span>${modelsAvailable}</span></li>
+                        <li><span>Models Running</span><span>${modelsRunning}</span></li>
+                        <li><span>Total Requests</span><span>${formatNumber(totalRequests)}</span></li>
+                        <li><span>Requests (24h)</span><span>${formatNumber(usageStats.requests_last_24h || 0)}</span></li>
+                        <li><span>Active Sessions</span><span>${usageStats.active_sessions || 0}</span></li>
+                        ${data.most_used_model ? `<li><span>Most Used Model</span><span>${data.most_used_model}</span></li>` : ''}
+                        ${data.total_model_size_mb ? `<li><span>Total Model Size</span><span>${safeToFixed(data.total_model_size_mb, 1)} MB</span></li>` : ''}
                     </ul>
                     
-                    ${data.models?.available ? `
+                    ${data.models && data.models.length > 0 ? `
                         <div class="metric-label" style="margin-top: 15px;">Available Models</div>
-                        <div style="font-size: 0.8rem; opacity: 0.8;">
-                            ${data.models.available.slice(0, 3).join(', ')}
-                            ${data.models.available.length > 3 ? `... (+${data.models.available.length - 3} more)` : ''}
+                        <div style="font-size: 0.8rem; opacity: 0.8; max-height: 60px; overflow-y: auto;">
+                            ${data.models.slice(0, 5).map(model => `
+                                <div style="margin: 2px 0; display: flex; justify-content: space-between;">
+                                    <span>${model.name.split(':')[0]} ${model.is_running ? '🟢' : ''}</span>
+                                    <span>${model.size_mb} MB</span>
+                                </div>
+                            `).join('')}
+                            ${data.models.length > 5 ? `<div style="text-align: center; margin-top: 5px;">... +${data.models.length - 5} more</div>` : ''}
                         </div>
                     ` : ''}
                     
-                    ${data.error ? `<div class="error-log">${data.error}</div>` : ''}
+                    ${data.error ? `<div class="error-log" style="margin-top: 10px;">${data.error}</div>` : ''}
                 </div>
             `;
         }
@@ -654,19 +786,19 @@
             
             let html = '<div class="metrics-grid">';
             
-            // System metrics
+            // System metrics - fix: access system data from correct path
             if (data.system) {
                 html += createSystemCard(data.system);
             }
             
             // Database metrics
             if (data.database) {
-                html += createDatabaseCard(data.database);
+                html += createDatabaseCard(data.database, data);
             }
             
             // MinIO metrics
             if (data.minio) {
-                html += createMinIOCard(data.minio);
+                html += createMinIOCard(data.minio, data);
             }
             
             // Ollama metrics
