@@ -728,50 +728,72 @@
             `;
         }
         
-        function createServicesCard(data) {
-            // Fix: Use individual service status like Combined Dashboard
-            // Apply Combined Dashboard logic for Ollama status
-            const fixedData = { ...data };
-            if (fixedData.ollama && window.metricsData && window.metricsData.ollama) {
-                // Use individual Ollama status instead of services status
-                fixedData.ollama.status = window.metricsData.ollama.status;
-            }
+        function formatUptime(seconds) {
+            if (!seconds || seconds < 0) return 'Unknown';
             
-            const services = Object.entries(fixedData);
-            const healthyCount = services.filter(([_, service]) => service.status === 'healthy').length;
-            const healthPercentage = (healthyCount / services.length) * 100;
-            const healthClass = getProgressClass(100 - healthPercentage); // Invert for health
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            
+            if (days > 0) {
+                return `${days}d ${hours}h`;
+            } else if (hours > 0) {
+                return `${hours}h ${minutes}m`;
+            } else {
+                return `${minutes}m`;
+            }
+        }
+        
+        function createServicesCard(data) {
+            // Fix: Handle both object and string service status formats
+            const services = Object.entries(data);
+            
+            // Convert string statuses to objects for consistent handling
+            const normalizedServices = services.map(([name, service]) => {
+                if (typeof service === 'string') {
+                    return [name, { status: service }];
+                } else if (service && typeof service === 'object') {
+                    return [name, { status: service.status || 'unknown', ...service }];
+                } else {
+                    return [name, { status: 'unknown' }];
+                }
+            });
+            
+            const healthyCount = normalizedServices.filter(([_, service]) => service.status === 'healthy').length;
+            const healthPercentage = normalizedServices.length > 0 ? (healthyCount / normalizedServices.length) * 100 : 0;
+            const healthClass = healthPercentage === 100 ? 'status-healthy' : healthPercentage > 50 ? 'status-warning' : 'status-error';
             
             return `
                 <div class="metric-card">
                     <div class="card-header">
                         <div class="card-title">⚙️ Service Health</div>
-                        <div class="status-indicator ${healthPercentage === 100 ? 'status-healthy' : healthPercentage > 50 ? 'status-warning' : 'status-error'}"></div>
+                        <div class="status-indicator ${healthClass}"></div>
                     </div>
                     
                     <div class="metric-label">Overall Health</div>
                     <div class="metric-value">${safeToFixed(healthPercentage, 0)}%</div>
                     <div class="progress-bar">
-                        <div class="progress-fill ${healthClass}" style="width: ${healthPercentage}%"></div>
+                        <div class="progress-fill ${healthClass}" style="width: ${Math.max(healthPercentage, 5)}%"></div>
                     </div>
                     
                     <div class="metric-label" style="margin-top: 15px;">Service Status</div>
                     <div class="service-grid">
-                        ${services.map(([serviceName, service]) => `
+                        ${normalizedServices.map(([serviceName, service]) => `
                             <div class="service-item">
                                 <div class="status-indicator ${getStatusClass(service.status)}"></div>
                                 <div>
                                     <div style="font-weight: 600;">${serviceName.replace('_', ' ').toUpperCase()}</div>
                                     <div style="font-size: 0.8rem; opacity: 0.8;">${service.status}</div>
+                                    ${service.uptime ? `<div style="font-size: 0.7rem; opacity: 0.6;">Uptime: ${formatUptime(service.uptime)}</div>` : ''}
                                 </div>
                             </div>
                         `).join('')}
                     </div>
                     
-                    ${services.some(([_, service]) => service.error) ? `
+                    ${normalizedServices.some(([_, service]) => service.error) ? `
                         <div class="metric-label" style="margin-top: 15px;">Service Errors</div>
                         <div class="error-log">
-                            ${services.filter(([_, service]) => service.error).map(([name, service]) => 
+                            ${normalizedServices.filter(([_, service]) => service.error).map(([name, service]) => 
                                 `<div>${name}: ${service.error}</div>`
                             ).join('')}
                         </div>
@@ -850,14 +872,9 @@
                 html += createNetworkCard(fixedNetwork);
             }
             
-            // Service health - Fix: Apply Combined Dashboard logic
+            // Service health - Fix: Handle both string and object service formats
             if (data.services) {
-                // Fix Ollama status using individual service status like Combined Dashboard
-                const fixedServices = { ...data.services };
-                if (fixedServices.ollama && data.ollama) {
-                    fixedServices.ollama.status = data.ollama.status;
-                }
-                html += createServicesCard(fixedServices);
+                html += createServicesCard(data.services);
             }
             
             html += '</div>';
