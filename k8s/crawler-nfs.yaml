@@ -40,29 +40,34 @@ spec:
               done
               echo "✅ I2P proxy is ready!"
               
+              until nc -z noctipede-portal-service 8080; do
+                echo "⏳ Portal service not ready, waiting..."
+                sleep 5
+              done
+              echo "✅ Portal service is ready!"
           - name: verify-sites-file
             image: busybox:1.35
             command: ['sh', '-c']
             args:
             - |
-              echo "📋 Verifying sites.txt file from NFS..."
+              echo "📋 Verifying sites.txt file..."
               if [ -f /nfs-sites/sites.txt ]; then
                 echo "✅ Found sites.txt with $(wc -l < /nfs-sites/sites.txt) sites"
                 echo "📄 First 5 sites:"
                 head -5 /nfs-sites/sites.txt
               else
-                echo "❌ sites.txt not found in NFS mount!"
-                echo "📁 NFS directory contents:"
+                echo "❌ sites.txt not found!"
+                echo "📁 /nfs-sites directory contents:"
                 ls -la /nfs-sites/
                 exit 1
               fi
             volumeMounts:
-            - name: sites-nfs
+            - name: nfs-sites
               mountPath: /nfs-sites
               
           containers:
           - name: noctipede-crawler
-            image: ghcr.io/splinterstice/noctipede:i2p-database-fix
+            image: ghcr.io/splinterstice/noctipede:latest
             imagePullPolicy: Always
             command: ["sh", "-c"]
             args:
@@ -76,8 +81,17 @@ spec:
               echo "📋 Using sites file: $SITES_FILE_PATH"
               echo "📊 Total sites to crawl: $(wc -l < $SITES_FILE_PATH)"
               
-              # Start crawler
-              PYTHONPATH=/app python -m crawlers.main
+              # Wait for comprehensive readiness (not just port checks)
+              echo "🔍 Checking comprehensive system readiness..."
+              until curl -s http://noctipede-portal-service:8080/api/readiness | grep -q '"ready_for_crawling":true'; do
+                echo "⏳ System not ready for crawling, waiting..."
+                curl -s http://noctipede-portal-service:8080/api/readiness | grep -o '"readiness_summary":"[^"]*"' || echo "Unable to get readiness status"
+                sleep 30
+              done
+              echo "✅ System is ready for crawling!"
+              
+              # Start crawler with readiness-aware manager
+              PYTHONPATH=/app python -m crawlers.manager
               
             envFrom:
             - configMapRef:
@@ -92,31 +106,35 @@ spec:
             - name: OLLAMA_KEEP_ALIVE
               value: "30s"
             - name: OLLAMA_CONCURRENT_REQUESTS
-              value: "1"
+              value: "3"  # Allow more concurrent AI requests
             - name: AI_MODEL_UNLOAD_AFTER_USE
               value: "true"
             - name: CONTENT_ANALYSIS_ENABLED
-              value: "false"
+              value: "true"  # Enable content analysis
             - name: IMAGE_ANALYSIS_ENABLED
-              value: "false"
+              value: "true"  # Enable image analysis
             volumeMounts:
-            - name: sites-nfs
-              mountPath: /nfs-sites
-              readOnly: true
             - name: output-data
               mountPath: /app/output
             - name: log-data
               mountPath: /app/logs
+            - name: data-volume
+              mountPath: /app/data
+            - name: nfs-sites
+              mountPath: /nfs-sites
               
           volumes:
-          - name: sites-nfs
-            persistentVolumeClaim:
-              claimName: noctipede-sites-pvc
           - name: output-data
             persistentVolumeClaim:
               claimName: noctipede-output-pvc
           - name: log-data
             persistentVolumeClaim:
               claimName: noctipede-logs-pvc
+          - name: data-volume
+            persistentVolumeClaim:
+              claimName: noctipede-data-pvc
+          - name: nfs-sites
+            persistentVolumeClaim:
+              claimName: noctipede-sites-pvc
               
           restartPolicy: OnFailure

@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     tor_proxy_port: int = Field(default=9050, env="TOR_PROXY_PORT")
     i2p_proxy_host: str = Field(default="127.0.0.1", env="I2P_PROXY_HOST")
     i2p_proxy_port: int = Field(default=4444, env="I2P_PROXY_PORT")
+    use_i2p_internal_proxies: bool = Field(default=True, env="USE_I2P_INTERNAL_PROXIES")
     i2p_internal_proxies: str = Field(default="", env="I2P_INTERNAL_PROXIES")
     
     # Application Configuration
