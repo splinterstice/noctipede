@@ -106,6 +106,20 @@ spec:
             image: ghcr.io/splinterstice/noctipede:latest
             imagePullPolicy: Always
             command: ["sh", "-c", "cd /app && PYTHONPATH=/app python -m crawlers.main"]
+            env:
+            # Override Kubernetes service discovery environment variables
+            - name: MARIADB_PORT
+              value: "3306"
+            - name: TOR_PROXY_PORT
+              value: "9150"
+            - name: I2P_PROXY_PORT
+              value: "4444"
+            - name: I2P_PROXY_HOST
+              value: "i2p-proxy"
+            - name: TOR_PROXY_HOST
+              value: "tor-proxy"
+            - name: MARIADB_HOST
+              value: "mariadb.mariadb-service"
             envFrom:
             - configMapRef:
                 name: noctipede-config

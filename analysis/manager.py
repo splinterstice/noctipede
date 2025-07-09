@@ -20,7 +20,7 @@ class AnalysisManager:
         self.image_analyzer = ImageAnalyzer()
         self.content_moderator = ContentModerator()
     
-    def analyze_page(self, page_id: int, analysis_types: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
+    def analyze_page(self, page_id: int, analysis_types: Optional[List[str]] = None, db_session=None) -> Optional[Dict[str, Any]]:
         """Perform comprehensive analysis on a page."""
         if not analysis_types:
             analysis_types = ['text', 'sentiment', 'entities', 'moderation']
@@ -30,13 +30,13 @@ class AnalysisManager:
         try:
             # Text analysis
             if 'text' in analysis_types or 'sentiment' in analysis_types or 'entities' in analysis_types:
-                text_result = self.text_analyzer.analyze_page_content(page_id)
+                text_result = self.text_analyzer.analyze_page_content(page_id, db_session)
                 if text_result:
                     results['text_analysis'] = text_result
             
             # Content moderation for text
             if 'moderation' in analysis_types:
-                moderation_result = self.content_moderator.moderate_text(page_id)
+                moderation_result = self.content_moderator.moderate_text(page_id, db_session)
                 if moderation_result:
                     results['text_moderation'] = moderation_result
             

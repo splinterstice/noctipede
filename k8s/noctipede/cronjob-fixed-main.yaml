@@ -3,30 +3,30 @@ kind: CronJob
 metadata:
   name: noctipede-crawler-nfs
   namespace: noctipede
+  labels:
+    app: noctipede-crawler
 spec:
-  schedule: "*/30 * * * *"
+  schedule: "*/30 * * * *"  # Every 30 minutes
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600  # 1 hour timeout
       template:
+        metadata:
+          labels:
+            app: noctipede-crawler
         spec:
+          restartPolicy: Never
           initContainers:
           - name: wait-for-services
             image: busybox:1.35
-            command: ['sh', '-c']
+            command: ["sh", "-c"]
             args:
             - |
-              echo "🔍 Waiting for required services..."
-              until nc -z mariadb.mariadb-service 3306; do
-                echo "⏳ MariaDB not ready, waiting..."
-                sleep 5
-              done
-              echo "✅ MariaDB is ready!"
-              
-              until nc -z minio-crawler-hl.minio-service 9000; do
-                echo "⏳ MinIO not ready, waiting..."
-                sleep 5
-              done
-              echo "✅ MinIO is ready!"
+              echo "⏳ Waiting for required services..."
               
               until nc -z tor-proxy 9150; do
                 echo "⏳ Tor proxy not ready, waiting..."
@@ -47,24 +47,23 @@ spec:
               echo "✅ Portal service is ready!"
           - name: verify-sites-file
             image: busybox:1.35
-            command: ['sh', '-c']
+            command: ["sh", "-c"]
             args:
             - |
-              echo "📋 Verifying sites.txt file..."
+              echo "📋 Verifying sites.txt file from NFS..."
               if [ -f /nfs-sites/sites.txt ]; then
                 echo "✅ Found sites.txt with $(wc -l < /nfs-sites/sites.txt) sites"
                 echo "📄 First 5 sites:"
                 head -5 /nfs-sites/sites.txt
               else
-                echo "❌ sites.txt not found!"
-                echo "📁 /nfs-sites directory contents:"
+                echo "❌ sites.txt not found in NFS mount!"
+                echo "📁 NFS directory contents:"
                 ls -la /nfs-sites/
                 exit 1
               fi
             volumeMounts:
             - name: nfs-sites
               mountPath: /nfs-sites
-              
           containers:
           - name: noctipede-crawler
             image: ghcr.io/splinterstice/noctipede:latest
@@ -73,31 +72,24 @@ spec:
             args:
             - |
               echo "🚀 Starting Noctipede Crawler with NFS sites..."
-              cd /app
-              
-              # Use NFS-mounted sites.txt
-              export SITES_FILE_PATH=/nfs-sites/sites.txt
-              
               echo "📋 Using sites file: $SITES_FILE_PATH"
               echo "📊 Total sites to crawl: $(wc -l < $SITES_FILE_PATH)"
               
-              # Wait for comprehensive readiness (not just port checks)
+              # Wait for system readiness with comprehensive checks
               echo "🔍 Checking comprehensive system readiness..."
-              until curl -s http://noctipede-portal-service:8080/api/readiness | grep -q '"ready_for_crawling":true'; do
+              while true; do
+                READINESS_RESPONSE=$(curl -s http://noctipede-portal-service:8080/api/readiness)
+                if echo "$READINESS_RESPONSE" | grep -q '"ready_for_crawling":true'; then
+                  break
+                fi
                 echo "⏳ System not ready for crawling, waiting..."
                 curl -s http://noctipede-portal-service:8080/api/readiness | grep -o '"readiness_summary":"[^"]*"' || echo "Unable to get readiness status"
                 sleep 30
               done
               echo "✅ System is ready for crawling!"
               
-              # Start crawler with readiness-aware manager
-              PYTHONPATH=/app python -m crawlers.manager
-              
-            envFrom:
-            - configMapRef:
-                name: noctipede-config
-            - secretRef:
-                name: noctipede-secrets
+              # Start crawler with correct main entry point
+              PYTHONPATH=/app python -m crawlers.main
             env:
             - name: SITES_FILE_PATH
               value: "/nfs-sites/sites.txt"
@@ -106,35 +98,33 @@ spec:
             - name: OLLAMA_KEEP_ALIVE
               value: "30s"
             - name: OLLAMA_CONCURRENT_REQUESTS
-              value: "3"  # Allow more concurrent AI requests
-            - name: AI_MODEL_UNLOAD_AFTER_USE
-              value: "true"
-            - name: CONTENT_ANALYSIS_ENABLED
-              value: "true"  # Enable content analysis
-            - name: IMAGE_ANALYSIS_ENABLED
-              value: "true"  # Enable image analysis
+              value: "3"
+            envFrom:
+            - configMapRef:
+                name: noctipede-config
+            - secretRef:
+                name: noctipede-secrets
             volumeMounts:
+            - name: nfs-sites
+              mountPath: /nfs-sites
             - name: output-data
               mountPath: /app/output
             - name: log-data
               mountPath: /app/logs
-            - name: data-volume
-              mountPath: /app/data
-            - name: nfs-sites
-              mountPath: /nfs-sites
-              
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "250m"
+              limits:
+                memory: "2Gi"
+                cpu: "1000m"
           volumes:
+          - name: nfs-sites
+            persistentVolumeClaim:
+              claimName: noctipede-sites-pvc
           - name: output-data
             persistentVolumeClaim:
               claimName: noctipede-output-pvc
           - name: log-data
             persistentVolumeClaim:
               claimName: noctipede-logs-pvc
-          - name: data-volume
-            persistentVolumeClaim:
-              claimName: noctipede-data-pvc
-          - name: nfs-sites
-            persistentVolumeClaim:
-              claimName: noctipede-sites-pvc
-              
-          restartPolicy: OnFailure

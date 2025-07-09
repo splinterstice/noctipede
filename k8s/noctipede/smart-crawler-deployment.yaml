@@ -42,7 +42,7 @@ spec:
         - |
           echo "🔍 Waiting for MariaDB to be ready..."
           apk add --no-cache netcat-openbsd
-          until nc -z mariadb 3306; do
+          until nc -z mariadb.mariadb-service 3306; do
             echo "⏳ MariaDB not ready, waiting..."
             sleep 5
           done
@@ -219,7 +219,7 @@ spec:
             name: noctipede-secrets
         env:
         - name: MARIADB_HOST
-          value: "mariadb"
+          value: "mariadb.mariadb-service"
         - name: PORTAL_URL
           value: "http://noctipede-portal-service:8080"
         - name: LOG_LEVEL

@@ -23,3 +23,16 @@ spec:
     requests:
       storage: 5Gi
   storageClassName: longhorn
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: noctipede-data-pvc
+  namespace: noctipede
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: longhorn

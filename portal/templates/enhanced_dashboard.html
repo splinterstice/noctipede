@@ -685,6 +685,18 @@
             const i2pWorking = data.network?.i2p?.connectivity || data.network?.i2p?.status === 'healthy';
             const bothWorking = torWorking && i2pWorking;
             
+            // Debug logging to console
+            console.log('Network Debug:', {
+                'tor_status': data.network?.tor?.status,
+                'tor_connectivity': data.network?.tor?.connectivity,
+                'tor_working': torWorking,
+                'i2p_status': data.network?.i2p?.status,
+                'i2p_connectivity': data.network?.i2p?.connectivity,
+                'i2p_proxy_working': data.network?.i2p?.proxy_working,
+                'i2p_working': i2pWorking,
+                'both_working': bothWorking
+            });
+            
             return `
                 <div class="metric-card">
                     <div class="card-header">
@@ -711,7 +723,12 @@
                             <div>Status: ${data.network?.i2p?.status || 'Unknown'}</div>
                             <div style="font-size: 0.8rem; opacity: 0.8;">
                                 Proxy: ${data.network?.i2p?.proxy_working ? '✅ Connected' : '❌ Disconnected'}<br>
-                                Network: ${data.network?.i2p?.connectivity ? '✅ Connected' : '❌ Disconnected'}
+                                Network: ${data.network?.i2p?.connectivity ? '✅ Connected' : '❌ Disconnected'}<br>
+                                ${data.network?.i2p?.test_site ? `Test Site: ${data.network?.i2p?.test_site}<br>` : ''}
+                                ${data.network?.i2p?.successful_tests !== undefined ? `Tests: ${data.network?.i2p?.successful_tests}/${data.network?.i2p?.total_tests || 0}<br>` : ''}
+                                <span style="font-size: 0.7rem; color: #ccc;">
+                                    Debug: status="${data.network?.i2p?.status}", connectivity=${data.network?.i2p?.connectivity}, proxy=${data.network?.i2p?.proxy_working}
+                                </span>
                             </div>
                         </div>
                     </div>

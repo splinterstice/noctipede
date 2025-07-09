@@ -22,7 +22,7 @@ spec:
         args:
         - |
           echo "🔍 Waiting for MariaDB to be ready..."
-          until nc -z mariadb 3306; do
+          until nc -z mariadb.mariadb-service 3306; do
             echo "⏳ MariaDB not ready, waiting..."
             sleep 5
           done
@@ -52,6 +52,32 @@ spec:
           mountPath: /app/logs
         - name: output-data
           mountPath: /app/output
+        - name: data-volume
+          mountPath: /app/data
+      - name: init-sites-file
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "📋 Initializing sites.txt file..."
+          if [ ! -f /app/data/sites.txt ]; then
+            echo "Creating sites.txt with test sites..."
+            cat > /app/data/sites.txt << 'EOF'
+          http://walker.i2p/
+          http://3ch.i2p/
+          http://10channel.i2p/
+          http://bitchan.i2p/
+          http://l7jqnz3yfe2wtwietafoieadmgqbu7dcmzmey63ktbjtxal3he4a.b32.i2p/
+          EOF
+            echo "✅ Created sites.txt with $(wc -l < /app/data/sites.txt) sites"
+          else
+            echo "✅ sites.txt already exists with $(wc -l < /app/data/sites.txt) sites"
+          fi
+          echo "📄 Current sites:"
+          cat /app/data/sites.txt
+        volumeMounts:
+        - name: data-volume
+          mountPath: /app/data
       containers:
       - name: noctipede-app
         image: ghcr.io/splinterstice/noctipede:latest
@@ -63,7 +89,7 @@ spec:
             name: noctipede-secrets
         env:
         - name: MARIADB_HOST
-          value: "mariadb"
+          value: "mariadb.mariadb-service"
         - name: WEB_SERVER_PORT
           value: "8080"
         - name: WEB_SERVER_HOST
@@ -76,24 +102,32 @@ spec:
           mountPath: /app/output
         - name: log-data
           mountPath: /app/logs
+        - name: data-volume
+          mountPath: /app/data
         command: ["sh", "-c"]
         args:
         - |
           echo "🚀 Starting Noctipede Web Application..."
           cd /app
-          PYTHONPATH=/app python -m portal.enhanced_portal
+          
+          echo "🌐 Starting web portal..."
+          PYTHONPATH=/app python -m portal.unified_portal
         readinessProbe:
           httpGet:
-            path: /
+            path: /api/health
             port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
+          initialDelaySeconds: 120
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 10
         livenessProbe:
           httpGet:
-            path: /
+            path: /api/health
             port: 8080
-          initialDelaySeconds: 60
+          initialDelaySeconds: 180
           periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
       volumes:
       - name: output-data
         persistentVolumeClaim:
@@ -101,6 +135,9 @@ spec:
       - name: log-data
         persistentVolumeClaim:
           claimName: noctipede-logs-pvc
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: noctipede-data-pvc
 ---
 apiVersion: v1
 kind: Service

@@ -14,7 +14,7 @@ class Site(Base):
     __tablename__ = "sites"
 
     id = Column(Integer, primary_key=True)
-    url = Column(String(255), unique=True, nullable=False)
+    url = Column(String(2000), unique=True, nullable=False)  # Increased for long I2P URLs
     domain = Column(String(255), nullable=True)  # Extracted domain
     network_type = Column(String(20), nullable=False, default='clearnet')  # clearnet, tor, i2p
     is_onion = Column(Boolean, default=False)  # Backward compatibility
@@ -46,7 +46,7 @@ class Page(Base):
 
     id = Column(Integer, primary_key=True)
     site_id = Column(Integer, ForeignKey('sites.id'), nullable=False)
-    url = Column(String(500), nullable=False)
+    url = Column(String(2000), nullable=False)  # Increased for long I2P URLs
     title = Column(String(500), nullable=True)
     content = Column(LONGTEXT, nullable=True)
     content_hash = Column(String(64), nullable=True)  # SHA-256 hash
@@ -83,7 +83,7 @@ class MediaFile(Base):
 
     id = Column(Integer, primary_key=True)
     page_id = Column(Integer, ForeignKey('pages.id'), nullable=False)
-    url = Column(String(500), nullable=False)
+    url = Column(String(2000), nullable=False)  # Increased for long I2P URLs
     filename = Column(String(255), nullable=True)
     file_type = Column(String(50), nullable=True)  # image, video, audio, document
     mime_type = Column(String(100), nullable=True)

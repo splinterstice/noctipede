@@ -26,7 +26,7 @@ spec:
         args:
         - |
           echo "🔍 Waiting for MariaDB to be ready..."
-          until nc -z mariadb 3306; do
+          until nc -z mariadb.mariadb-service 3306; do
             echo "⏳ MariaDB not ready, waiting..."
             sleep 5
           done
@@ -316,7 +316,7 @@ spec:
                   "proxies": (await get_proxy_status()),
                   "ollama": get_ollama_stats(),
                   "database": {
-                      "host": "mariadb",
+                      "host": "mariadb.mariadb-service",
                       "port": 3306,
                       "status": "connected"  # TODO: Add actual DB health check
                   }

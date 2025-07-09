@@ -66,6 +66,136 @@ kubectl apply -f nfs-sites.yaml  # Add NFS volume for sites
 kubectl apply -f noctipede/pvc.yaml
 print_status "PVCs created"
 
+# Step 4: Deploy MariaDB with UTF-8 fixes and proper initialization
+echo ""
+echo "🗄️  Deploying MariaDB with UTF-8 support and proper initialization..."
+cat > /tmp/working-mariadb.yaml << 'EOF'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mariadb-storage-pvc
+  namespace: noctipede
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: longhorn
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb
+  namespace: noctipede
+  labels:
+    app: mariadb
+spec:
+  ports:
+  - port: 3306
+    name: mysql
+  selector:
+    app: mariadb
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mariadb
+  namespace: noctipede
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mariadb
+  template:
+    metadata:
+      labels:
+        app: mariadb
+    spec:
+      securityContext:
+        fsGroup: 999
+      initContainers:
+      - name: fix-permissions
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔧 Fixing MariaDB data directory permissions..."
+          chown -R 999:999 /var/lib/mysql
+          chmod -R 755 /var/lib/mysql
+          # Clear any corrupted data to force fresh initialization
+          if [ -f /var/lib/mysql/mysql/db.frm ]; then
+            echo "⚠️  Found existing data, checking integrity..."
+          else
+            echo "🆕 Fresh installation, will initialize system tables"
+            rm -rf /var/lib/mysql/*
+          fi
+          echo "✅ Permissions fixed"
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+        securityContext:
+          runAsUser: 0
+      containers:
+      - name: mariadb
+        image: mariadb:11.0
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: MARIA_ROOT_PASSWORD
+        - name: MYSQL_DATABASE
+          value: "splinter-research"
+        - name: MYSQL_USER
+          value: "splinter-research"
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: MARIA_USER_PASSWORD
+        # Force initialization of system tables
+        - name: MYSQL_INITDB_SKIP_TZINFO
+          value: "1"
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+        # Use default MariaDB startup (not custom command) to ensure proper initialization
+        readinessProbe:
+          tcpSocket:
+            port: 3306
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 5
+        livenessProbe:
+          tcpSocket:
+            port: 3306
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        securityContext:
+          runAsUser: 999
+          runAsGroup: 999
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mariadb-storage-pvc
+EOF
+
+kubectl apply -f /tmp/working-mariadb.yaml
+print_status "MariaDB deployed with UTF-8 support and proper initialization"
+
+# Step 5: Deploy MinIO
+echo ""
+echo "📦 Deploying MinIO object storage..."
+kubectl apply -f minio/
+print_status "MinIO deployed"
+
 # Step 6: Deploy proxy services
 echo ""
 echo "🌐 Deploying proxy services..."
@@ -75,6 +205,10 @@ print_status "Tor and I2P proxies deployed"
 # Step 7: Wait for core services to be ready
 echo ""
 echo "⏳ Waiting for core services to be ready..."
+
+print_info "Waiting for MariaDB..."
+kubectl wait --for=condition=ready pod -l app=mariadb -n noctipede --timeout=300s
+print_status "MariaDB is ready"
 
 # Test MariaDB with a separate pod
 print_info "Testing MariaDB configuration..."
@@ -93,9 +227,9 @@ spec:
     args:
     - |
       echo "🔍 Testing MariaDB connectivity and charset..."
-      if mariadb -h mariadb.mariadb-service -u splinter-research -p$MYSQL_ROOT_PASSWORD -e "SELECT 1;" > /dev/null 2>&1; then
+      if mariadb -h mariadb -u root -p$MYSQL_ROOT_PASSWORD -e "SELECT 1;" > /dev/null 2>&1; then
         echo "✅ MariaDB connection successful"
-        mariadb -h mariadb.mariadb-service -u splinter-research -p$MYSQL_ROOT_PASSWORD -e "SHOW VARIABLES LIKE 'character_set_server';"
+        mariadb -h mariadb -u root -p$MYSQL_ROOT_PASSWORD -e "SHOW VARIABLES LIKE 'character_set_server';"
         echo "✅ MariaDB charset verified"
       else
         echo "❌ MariaDB connection failed"
@@ -114,6 +248,10 @@ kubectl wait --for=condition=Ready pod/mariadb-test -n noctipede --timeout=30s |
 kubectl logs mariadb-test -n noctipede || echo "⚠️  Could not get test logs"
 kubectl delete pod mariadb-test -n noctipede --ignore-not-found=true
 print_status "MariaDB configuration verified"
+
+print_info "Waiting for MinIO..."
+kubectl wait --for=condition=ready pod -l app=minio -n noctipede --timeout=120s
+print_status "MinIO is ready"
 
 print_info "Waiting for Tor proxy..."
 kubectl wait --for=condition=ready pod -l app=tor-proxy -n noctipede --timeout=120s
@@ -151,7 +289,7 @@ spec:
         args:
         - |
           echo "🔍 Waiting for MariaDB to be ready..."
-          until nc -z  mariadb.mariadb-service 3306; do
+          until nc -z mariadb 3306; do
             echo "⏳ MariaDB not ready, waiting..."
             sleep 5
           done
@@ -162,7 +300,7 @@ spec:
         args:
         - |
           echo "🔍 Waiting for MinIO to be ready..."
-          until nc -z minio-crawler-hl.minio-service 9000; do
+          until nc -z minio 9000; do
             echo "⏳ MinIO not ready, waiting..."
             sleep 5
           done
@@ -181,8 +319,6 @@ spec:
           mountPath: /app/logs
         - name: output-data
           mountPath: /app/output
-        - name: data-volume
-          mountPath: /app/data
       containers:
       - name: noctipede-app
         image: ghcr.io/splinterstice/noctipede:latest
@@ -194,15 +330,11 @@ spec:
             name: noctipede-secrets
         env:
         - name: MARIADB_HOST
-          value: "mariadb.mariadb-service"
+          value: "mariadb"
         - name: WEB_SERVER_PORT
           value: "8080"
         - name: WEB_SERVER_HOST
           value: "0.0.0.0"
-        - name: SKIP_RECENT_CRAWLS
-          value: "false"
-        - name: MAX_CONCURRENT_CRAWLERS
-          value: "10"
         ports:
         - containerPort: 8080
           name: http
@@ -211,30 +343,20 @@ spec:
           mountPath: /app/output
         - name: log-data
           mountPath: /app/logs
-        - name: data-volume
-          mountPath: /app/data
-        - name: nfs-sites
-          mountPath: /nfs-sites
         command: ["sh", "-c"]
         args:
         - |
           echo "🚀 Starting Noctipede Web Application..."
           cd /app
-          
-          echo "🗄️ Initializing database..."
-          python database/init_db.py
-          echo "✅ Database initialized successfully!"
-          
-          echo "🌐 Starting web portal..."
           PYTHONPATH=/app python -m portal.unified_portal
         readinessProbe:
           httpGet:
-            path: /api/health
+            path: /
             port: 8080
-          initialDelaySeconds: 120
-          periodSeconds: 15
-          timeoutSeconds: 10
-          failureThreshold: 10
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 15
+          failureThreshold: 3
         livenessProbe:
           httpGet:
             path: /
@@ -250,12 +372,6 @@ spec:
       - name: log-data
         persistentVolumeClaim:
           claimName: noctipede-logs-pvc
-      - name: data-volume
-        persistentVolumeClaim:
-          claimName: noctipede-data-pvc
-      - name: nfs-sites
-        persistentVolumeClaim:
-          claimName: noctipede-sites-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -308,7 +424,7 @@ spec:
         args:
         - |
           echo "🔍 Waiting for MariaDB to be ready..."
-          until nc -z mariadb.mariadb-service 3306; do
+          until nc -z mariadb 3306; do
             echo "⏳ MariaDB not ready, waiting..."
             sleep 5
           done
@@ -319,7 +435,7 @@ spec:
         args:
         - |
           echo "🔍 Waiting for MinIO to be ready..."
-          until nc -z minio-crawler-hl.minio-service 9000; do
+          until nc -z minio 9000; do
             echo "⏳ MinIO not ready, waiting..."
             sleep 5
           done
@@ -338,8 +454,6 @@ spec:
           mountPath: /app/logs
         - name: output-data
           mountPath: /app/output
-        - name: data-volume
-          mountPath: /app/data
       containers:
       - name: noctipede-app
         image: ghcr.io/splinterstice/noctipede:latest
@@ -352,12 +466,6 @@ spec:
         - |
           echo "🚀 Starting Noctipede Web Application..."
           cd /app
-          
-          echo "🗄️ Initializing database..."
-          python database/init_db.py
-          echo "✅ Database initialized successfully!"
-          
-          echo "🌐 Starting web portal..."
           PYTHONPATH=/app python -m portal.unified_portal
         envFrom:
         - configMapRef:
@@ -366,32 +474,24 @@ spec:
             name: noctipede-secrets
         env:
         - name: MARIADB_HOST
-          value: "mariadb.mariadb-service"
+          value: "mariadb"
         - name: WEB_SERVER_PORT
           value: "8080"
         - name: WEB_SERVER_HOST
           value: "0.0.0.0"
-        - name: SKIP_RECENT_CRAWLS
-          value: "false"
-        - name: MAX_CONCURRENT_CRAWLERS
-          value: "10"
         volumeMounts:
         - name: output-data
           mountPath: /app/output
         - name: log-data
           mountPath: /app/logs
-        - name: data-volume
-          mountPath: /app/data
-        - name: nfs-sites
-          mountPath: /nfs-sites
         readinessProbe:
           httpGet:
             path: /api/health
             port: 8080
-          initialDelaySeconds: 120
-          periodSeconds: 15
-          timeoutSeconds: 10
-          failureThreshold: 10
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 15
+          failureThreshold: 3
         livenessProbe:
           httpGet:
             path: /api/health
@@ -407,12 +507,6 @@ spec:
       - name: log-data
         persistentVolumeClaim:
           claimName: noctipede-logs-pvc
-      - name: data-volume
-        persistentVolumeClaim:
-          claimName: noctipede-data-pvc
-      - name: nfs-sites
-        persistentVolumeClaim:
-          claimName: noctipede-sites-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -438,8 +532,103 @@ print_status "Noctipede application and NFS crawler deployed"
 
 # Step 9.5: Deploy dedicated portal
 echo ""
-echo "🌐 Deploying dedicated portal with data persistence..."
-kubectl apply -f noctipede/enhanced-portal-deployment-with-data.yaml
+echo "🌐 Deploying dedicated portal..."
+cat > /tmp/portal-deployment.yaml << 'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noctipede-portal
+  namespace: noctipede
+  labels:
+    app: noctipede-portal
+    component: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noctipede-portal
+      component: web
+  template:
+    metadata:
+      labels:
+        app: noctipede-portal
+        component: web
+    spec:
+      initContainers:
+      - name: wait-for-database
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for MariaDB to be ready..."
+          until nc -z mariadb 3306; do
+            echo "⏳ MariaDB not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ MariaDB is ready!"
+      containers:
+      - name: noctipede-portal
+        image: ghcr.io/splinterstice/noctipede:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        command: ["sh", "-c"]
+        args:
+        - |
+          echo "🌐 Starting Noctipede Unified Portal..."
+          echo "📊 Available dashboards: /basic, /enhanced, /combined"
+          cd /app
+          mkdir -p /tmp/output /tmp/logs
+          export OUTPUT_DIR=/tmp/output
+          PYTHONPATH=/app python -m portal.unified_portal
+        envFrom:
+        - configMapRef:
+            name: noctipede-config
+        - secretRef:
+            name: noctipede-secrets
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 90
+          periodSeconds: 30
+          timeoutSeconds: 30
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 45
+          periodSeconds: 15
+          timeoutSeconds: 15
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: noctipede-portal-service
+  namespace: noctipede
+spec:
+  selector:
+    app: noctipede-portal
+    component: web
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 32080
+  type: NodePort
+EOF
+
+kubectl apply -f /tmp/portal-deployment.yaml
 print_status "Dedicated portal deployed"
 
 # Step 9.6: Deploy ingress for external access
@@ -447,54 +636,6 @@ echo ""
 echo "🌐 Deploying ingress for external access..."
 kubectl apply -f ingress.yaml
 print_status "Ingress deployed"
-
-# Step 9.5: Initialize database
-echo ""
-echo "🗄️ Initializing database..."
-kubectl apply -f init-database-job.yaml
-echo "⏳ Waiting for database initialization to complete..."
-kubectl wait --for=condition=complete job/init-database -n noctipede --timeout=300s
-print_status "Database initialized"
-
-# Step 9.6: Verify NFS sites file
-echo ""
-echo "📋 Verifying NFS sites.txt file..."
-kubectl run verify-sites --image=busybox:1.35 --restart=Never -n noctipede --overrides='{
-  "spec": {
-    "containers": [
-      {
-        "name": "verify-sites",
-        "image": "busybox:1.35",
-        "command": ["sh", "-c", "echo \"📋 Checking NFS sites.txt file...\" && if [ -f /nfs-sites/sites.txt ]; then echo \"✅ Found sites.txt with $(wc -l < /nfs-sites/sites.txt) sites\" && echo \"Contents:\" && cat /nfs-sites/sites.txt; else echo \"❌ sites.txt not found, creating default...\" && echo \"http://walker.i2p/\nhttp://3ch.i2p/\nhttp://10channel.i2p/\nhttp://bitchan.i2p/\nhttp://l7jqnz3yfe2wtwietafoieadmgqbu7dcmzmey63ktbjtxal3he4a.b32.i2p/\nhttp://reg.i2p/\nhttp://notbob.i2p/\nhttp://purokishi.i2p/\nhttp://facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion/\" > /nfs-sites/sites.txt && echo \"✅ Created sites.txt with $(wc -l < /nfs-sites/sites.txt) sites\"; fi"],
-        "volumeMounts": [
-          {
-            "name": "nfs-sites",
-            "mountPath": "/nfs-sites"
-          }
-        ]
-      }
-    ],
-    "volumes": [
-      {
-        "name": "nfs-sites",
-        "persistentVolumeClaim": {
-          "claimName": "noctipede-sites-pvc"
-        }
-      }
-    ]
-  }
-}'
-
-echo "⏳ Waiting for sites file verification..."
-if kubectl wait --for=condition=complete pod/verify-sites -n noctipede --timeout=60s; then
-    print_status "Sites file verification completed"
-else
-    print_warning "Sites file verification timed out, checking status..."
-fi
-
-kubectl logs verify-sites -n noctipede || echo "Could not get verification logs"
-kubectl delete pod verify-sites -n noctipede --ignore-not-found=true
-print_status "NFS sites file verified"
 
 # Step 10: Wait for application to be ready
 echo ""
@@ -519,7 +660,7 @@ PORTAL_PORT=$(kubectl get service noctipede-portal-service -n noctipede -o jsonp
 MINIO_IP=$(kubectl get service minio-console -n noctipede -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "N/A")
 
 # Clean up temporary files
-rm -f /tmp/working-mariadb.yaml /tmp/working-app.yaml /tmp/mariadb-test.yaml /tmp/non-sites-pvcs.yaml
+rm -f /tmp/working-mariadb.yaml /tmp/working-app.yaml /tmp/mariadb-test.yaml /tmp/non-sites-pvcs.yaml /tmp/portal-deployment.yaml
 
 # Step 12: Comprehensive readiness check
 echo ""
@@ -537,7 +678,7 @@ MAX_READINESS_ATTEMPTS=12  # 6 minutes total
 READINESS_READY=false
 
 while [ $READINESS_CHECK_ATTEMPTS -lt $MAX_READINESS_ATTEMPTS ]; do
-    if kubectl run readiness-test --image=curlimages/curl --rm -it --restart=Never -n noctipede --timeout=30s -- curl -s http://noctipede-portal-service:8080/api/readiness > /tmp/readiness_result.json 2>/dev/null; then
+    if kubectl run readiness-test --image=curlimages/curl --rm -it --restart=Never -n noctipede --timeout=30s -- curl -s http://noctipede-portal:8080/api/readiness > /tmp/readiness_result.json 2>/dev/null; then
         # Check if the response indicates readiness
         if grep -q '"ready_for_crawling":true' /tmp/readiness_result.json 2>/dev/null; then
             READINESS_READY=true
@@ -548,7 +689,7 @@ while [ $READINESS_CHECK_ATTEMPTS -lt $MAX_READINESS_ATTEMPTS ]; do
             echo "📊 Readiness Details:"
             echo "===================="
             if command -v jq >/dev/null 2>&1; then
-                kubectl run readiness-detail --image=curlimages/curl --rm -it --restart=Never -n noctipede --timeout=30s -- curl -s http://noctipede-portal-service:8080/api/readiness | jq '.readiness_details.readiness_summary' 2>/dev/null || echo "Readiness check passed"
+                kubectl run readiness-detail --image=curlimages/curl --rm -it --restart=Never -n noctipede --timeout=30s -- curl -s http://noctipede-portal:8080/api/readiness | jq '.readiness_details.readiness_summary' 2>/dev/null || echo "Readiness check passed"
             else
                 echo "✅ Crawler readiness verified (install jq for detailed output)"
             fi
@@ -559,7 +700,7 @@ while [ $READINESS_CHECK_ATTEMPTS -lt $MAX_READINESS_ATTEMPTS ]; do
             
             # Show what's not ready
             if command -v jq >/dev/null 2>&1; then
-                kubectl run readiness-detail --image=curlimages/curl --rm -it --restart=Never -n noctipede --timeout=30s -- curl -s http://noctipede-portal-service:8080/api/readiness | jq -r '.readiness_details.readiness_summary // "Checking readiness..."' 2>/dev/null || echo "Checking readiness..."
+                kubectl run readiness-detail --image=curlimages/curl --rm -it --restart=Never -n noctipede --timeout=30s -- curl -s http://noctipede-portal:8080/api/readiness | jq -r '.readiness_details.readiness_summary // "Checking readiness..."' 2>/dev/null || echo "Checking readiness..."
             fi
             
             sleep 30
@@ -586,7 +727,7 @@ else
     print_error "⚠️  READINESS CHECK INCOMPLETE"
     echo "   The system deployed successfully but may not be fully ready for crawling."
     echo "   Check the portal dashboard for detailed network status."
-    echo "   Manual verification: kubectl run test --image=curlimages/curl --rm -it --restart=Never -n noctipede -- curl http://noctipede-portal-service:8080/api/readiness"
+    echo "   Manual verification: kubectl run test --image=curlimages/curl --rm -it --restart=Never -n noctipede -- curl http://noctipede-portal:8080/api/readiness"
 fi
 
 echo ""
@@ -605,7 +746,7 @@ echo ""
 echo "🔧 USEFUL COMMANDS:"
 echo "=================="
 echo "• Check all pods: kubectl get pods -n noctipede"
-echo "• Check crawler readiness: kubectl run test --image=curlimages/curl --rm -it --restart=Never -n noctipede -- curl http://noctipede-portal-service:8080/api/readiness"
+echo "• Check crawler readiness: kubectl run test --image=curlimages/curl --rm -it --restart=Never -n noctipede -- curl http://noctipede-portal:8080/api/readiness"
 echo "• View portal logs: kubectl logs -f deployment/noctipede-portal -n noctipede"
 echo "• Run manual crawler: kubectl exec -it deployment/noctipede-app -n noctipede -- python -m crawlers.main"
 echo "• View app logs: kubectl logs -l app=noctipede-app -n noctipede"

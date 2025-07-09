@@ -22,7 +22,7 @@ spec:
         args:
         - |
           echo "🔍 Waiting for MariaDB to be ready..."
-          until nc -z mariadb 3306; do
+          until nc -z mariadb.mariadb-service 3306; do
             echo "⏳ MariaDB not ready, waiting..."
             sleep 5
           done
@@ -78,7 +78,7 @@ spec:
         imagePullPolicy: Never
         env:
         - name: MARIADB_HOST
-          value: "mariadb"
+          value: "mariadb.mariadb-service"
         - name: MARIADB_PORT
           value: "3306"
         - name: MARIADB_USER

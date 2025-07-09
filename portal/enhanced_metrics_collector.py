@@ -65,6 +65,10 @@ class EnhancedMetricsCollector:
         self.metrics_cache = {}
         self.last_update = None
         
+        # Ollama usage tracking - Use persistent directory
+        self.ollama_stats_file = '/app/data/ollama_usage_stats.json'
+        self.ollama_stats = self._load_ollama_stats()
+        
     def setup_logging(self):
         """Setup logging configuration"""
         logging.basicConfig(
@@ -407,94 +411,115 @@ class EnhancedMetricsCollector:
             return {'error': str(e), 'status': 'error', 'pressure': 100}
     
     async def collect_ollama_metrics(self) -> Dict[str, Any]:
-        """Collect Ollama API metrics and performance data"""
+        """Collect Ollama metrics from the unified metrics API"""
         try:
-            base_url = self.ollama_config['base_url']
-            
-            metrics = {
-                'status': 'unknown',
-                'models': {},
-                'performance': {},
-                'requests': {},
-                'pressure': 0
-            }
-            
+            # Fetch metrics from the unified API endpoint to avoid duplicate stats management
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
-                # Test basic connectivity
                 try:
-                    async with session.get(f"{base_url}/api/tags") as response:
+                    async with session.get("http://localhost:8080/api/metrics") as response:
                         if response.status == 200:
-                            models_data = await response.json()
-                            metrics['status'] = 'healthy'
-                            metrics['models'] = {
-                                'available': [model['name'] for model in models_data.get('models', [])],
-                                'count': len(models_data.get('models', []))
-                            }
-                        else:
-                            metrics['status'] = 'error'
-                            metrics['error'] = f"HTTP {response.status}"
-                except Exception as e:
-                    metrics['status'] = 'error'
-                    metrics['error'] = str(e)
-                
-                # Try to get version info
-                try:
-                    async with session.get(f"{base_url}/api/version") as response:
-                        if response.status == 200:
-                            version_data = await response.json()
-                            metrics['version'] = version_data.get('version', 'unknown')
-                except:
-                    pass  # Version endpoint might not exist
-                
-                # Performance test with a simple request
-                if metrics['status'] == 'healthy':
-                    try:
-                        test_start = time.time()
-                        test_payload = {
-                            "model": "llama3.1:8b",  # Use a common model
-                            "prompt": "Hello",
-                            "stream": False,
-                            "options": {"num_predict": 1}
-                        }
-                        
-                        async with session.post(
-                            f"{base_url}/api/generate",
-                            json=test_payload
-                        ) as response:
-                            test_time = time.time() - test_start
+                            unified_metrics = await response.json()
+                            ollama_data = unified_metrics.get('ollama', {})
                             
-                            if response.status == 200:
-                                metrics['performance'] = {
-                                    'response_time_ms': round(test_time * 1000, 2),
-                                    'last_test': datetime.now().isoformat()
-                                }
+                            # Transform the unified metrics format to enhanced format
+                            if ollama_data.get('status') == 'healthy':
+                                # Calculate pressure based on usage and performance
+                                total_requests = ollama_data.get('total_requests', 0)
+                                models_running = ollama_data.get('models_running', 0)
                                 
-                                # Calculate pressure based on response time
-                                # Pressure increases if response time > 5 seconds
-                                metrics['pressure'] = min((test_time / 5.0) * 100, 100)
-                            else:
-                                metrics['performance'] = {
-                                    'error': f"Test request failed: HTTP {response.status}",
-                                    'response_time_ms': round(test_time * 1000, 2)
+                                # Pressure calculation: higher usage = higher pressure
+                                pressure = min(100, (models_running * 25) + (total_requests / 100))
+                                
+                                return {
+                                    'status': 'healthy',
+                                    'connection': True,
+                                    'models': {
+                                        'available': [model['name'] for model in ollama_data.get('models', [])],
+                                        'count': ollama_data.get('models_available', 0),
+                                        'running': models_running,
+                                        'details': ollama_data.get('models', [])
+                                    },
+                                    'performance': {
+                                        'total_requests': total_requests,
+                                        'requests_last_hour': ollama_data.get('usage_stats', {}).get('requests_last_hour', 0),
+                                        'requests_last_24h': ollama_data.get('usage_stats', {}).get('requests_last_24h', 0),
+                                        'average_response_time_ms': ollama_data.get('usage_stats', {}).get('average_response_time_ms', 0),
+                                        'active_sessions': ollama_data.get('usage_stats', {}).get('active_sessions', 0),
+                                        'uptime_hours': ollama_data.get('usage_stats', {}).get('uptime_hours', 0)
+                                    },
+                                    'usage_stats': ollama_data.get('usage_stats', {}),
+                                    'model_usage': ollama_data.get('usage_stats', {}).get('model_usage', {}),
+                                    'most_used_model': ollama_data.get('most_used_model'),
+                                    'total_model_size_mb': ollama_data.get('total_model_size_mb', 0),
+                                    'pressure': round(pressure, 1)
                                 }
-                                metrics['pressure'] = 50  # Partial failure
-                    except Exception as e:
-                        metrics['performance'] = {'error': f"Performance test failed: {str(e)}"}
-                        metrics['pressure'] = 75  # High pressure due to performance issues
-                
-                # Request statistics (would need to be tracked separately in production)
-                metrics['requests'] = {
-                    'note': 'Request statistics would be tracked by the application',
-                    'total_requests': 'N/A',
-                    'successful_requests': 'N/A',
-                    'failed_requests': 'N/A'
-                }
-            
-            return metrics
-            
+                            else:
+                                # Return error state from unified metrics
+                                return {
+                                    'status': ollama_data.get('status', 'error'),
+                                    'connection': ollama_data.get('connection', False),
+                                    'error': ollama_data.get('error', 'Unknown error'),
+                                    'models': {'available': [], 'count': 0, 'running': 0},
+                                    'performance': {'total_requests': 0},
+                                    'pressure': 100
+                                }
+                        else:
+                            # Fallback to direct Ollama API if unified metrics unavailable
+                            return await self._collect_direct_ollama_metrics()
+                            
+                except Exception as e:
+                    self.logger.warning(f"Could not fetch from unified metrics API: {e}")
+                    # Fallback to direct Ollama API
+                    return await self._collect_direct_ollama_metrics()
+                    
         except Exception as e:
             self.logger.error(f"Error collecting Ollama metrics: {e}")
             return {'error': str(e), 'status': 'error', 'pressure': 100}
+    
+    async def _collect_direct_ollama_metrics(self) -> Dict[str, Any]:
+        """Fallback method to collect basic Ollama metrics directly"""
+        try:
+            base_url = self.ollama_config['base_url']
+            
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+                async with session.get(f"{base_url}/api/tags") as response:
+                    if response.status == 200:
+                        models_data = await response.json()
+                        models = models_data.get('models', [])
+                        
+                        return {
+                            'status': 'healthy',
+                            'connection': True,
+                            'models': {
+                                'available': [model['name'] for model in models],
+                                'count': len(models),
+                                'running': 0,  # Can't determine without /api/ps
+                                'details': models
+                            },
+                            'performance': {
+                                'total_requests': 0,  # No persistent tracking in fallback
+                                'note': 'Limited metrics - unified API unavailable'
+                            },
+                            'pressure': 25  # Moderate pressure due to limited data
+                        }
+                    else:
+                        return {
+                            'status': 'error',
+                            'connection': False,
+                            'error': f"HTTP {response.status}",
+                            'models': {'available': [], 'count': 0, 'running': 0},
+                            'performance': {'total_requests': 0},
+                            'pressure': 100
+                        }
+        except Exception as e:
+            return {
+                'status': 'error',
+                'connection': False,
+                'error': str(e),
+                'models': {'available': [], 'count': 0, 'running': 0},
+                'performance': {'total_requests': 0},
+                'pressure': 100
+            }
     
     async def collect_crawler_metrics(self) -> Dict[str, Any]:
         """Collect crawler performance and status metrics"""
@@ -605,135 +630,184 @@ class EnhancedMetricsCollector:
             return {'error': str(e), 'status': 'error'}
     
     async def collect_network_metrics(self) -> Dict[str, Any]:
-        """Collect network connectivity metrics for Tor and I2P"""
+        """Collect network connectivity metrics from unified API"""
+        try:
+            # Fetch network metrics from the unified API endpoint
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+                try:
+                    async with session.get("http://localhost:8080/api/metrics") as response:
+                        if response.status == 200:
+                            unified_metrics = await response.json()
+                            network_data = unified_metrics.get('network', {})
+                            
+                            # Transform unified network metrics to enhanced format
+                            return {
+                                'tor': {
+                                    'status': network_data.get('tor', {}).get('status', 'unknown'),
+                                    'connectivity': network_data.get('tor', {}).get('connectivity', False),
+                                    'ready_for_crawling': network_data.get('tor', {}).get('ready_for_crawling', False),
+                                    'proxy_working': network_data.get('tor', {}).get('proxy_working', False),
+                                    'details': network_data.get('tor', {})
+                                },
+                                'i2p': {
+                                    'status': network_data.get('i2p', {}).get('status', 'unknown'),
+                                    'connectivity': network_data.get('i2p', {}).get('connectivity', False),
+                                    'ready_for_crawling': network_data.get('i2p', {}).get('ready_for_crawling', False),
+                                    'proxy_working': network_data.get('i2p', {}).get('proxy_working', False),
+                                    'internal_proxies': network_data.get('i2p', {}).get('internal_proxies', {}),
+                                    'stats_accessible': network_data.get('i2p', {}).get('stats_accessible', False),
+                                    'successful_sites': network_data.get('i2p', {}).get('successful_sites', []),
+                                    'details': network_data.get('i2p', {})
+                                },
+                                'overall_readiness': network_data.get('overall_readiness', {
+                                    'ready_for_crawling': False,
+                                    'tor_ready': False,
+                                    'i2p_ready': False,
+                                    'i2p_proxies_sufficient': False,
+                                    'minimum_i2p_proxies_required': 5,
+                                    'active_i2p_proxies': 0,
+                                    'readiness_summary': '❌ Network metrics unavailable'
+                                })
+                            }
+                        else:
+                            # Fallback to direct testing if unified API unavailable
+                            return await self._collect_direct_network_metrics()
+                            
+                except Exception as e:
+                    self.logger.warning(f"Could not fetch from unified metrics API: {e}")
+                    # Fallback to direct testing
+                    return await self._collect_direct_network_metrics()
+                    
+        except Exception as e:
+            self.logger.error(f"Error collecting network metrics: {e}")
+            return {
+                'tor': {'status': 'error', 'connectivity': False, 'ready_for_crawling': False, 'error': str(e)},
+                'i2p': {'status': 'error', 'connectivity': False, 'ready_for_crawling': False, 'error': str(e)},
+                'overall_readiness': {
+                    'ready_for_crawling': False,
+                    'tor_ready': False,
+                    'i2p_ready': False,
+                    'i2p_proxies_sufficient': False,
+                    'minimum_i2p_proxies_required': 5,
+                    'active_i2p_proxies': 0,
+                    'readiness_summary': f'❌ Network testing failed: {str(e)}'
+                }
+            }
+    
+    async def _collect_direct_network_metrics(self) -> Dict[str, Any]:
+        """Fallback method for direct network testing when unified API unavailable"""
         metrics = {
-            'tor': {'status': 'unknown', 'connectivity': False},
-            'i2p': {'status': 'unknown', 'connectivity': False, 'proxy_connectivity': False}
+            'tor': {'status': 'unknown', 'connectivity': False, 'ready_for_crawling': False},
+            'i2p': {'status': 'unknown', 'connectivity': False, 'ready_for_crawling': False},
+            'overall_readiness': {
+                'ready_for_crawling': False,
+                'tor_ready': False,
+                'i2p_ready': False,
+                'i2p_proxies_sufficient': False,
+                'minimum_i2p_proxies_required': 5,
+                'active_i2p_proxies': 0,
+                'readiness_summary': '⚠️ Using fallback network testing'
+            }
         }
         
-        # Test Tor proxy connectivity (SOCKS5)
+        # Basic Tor connectivity test
         try:
             import socket
-            
-            # Test basic socket connection to Tor proxy
-            tor_host = self.proxy_config['tor_host']
-            tor_port = self.proxy_config['tor_port']
-            
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(5)
-            result = sock.connect_ex((tor_host, tor_port))
+            result = sock.connect_ex((self.proxy_config['tor_host'], self.proxy_config['tor_port']))
             sock.close()
             
             if result == 0:
                 metrics['tor'] = {
-                    'status': 'healthy',
+                    'status': 'warning',
                     'connectivity': True,
-                    'proxy_host': tor_host,
-                    'proxy_port': tor_port,
-                    'connection_test': 'passed'
+                    'ready_for_crawling': True,  # Assume ready if proxy accessible
+                    'proxy_working': True,
+                    'note': 'Basic socket test only - limited verification'
                 }
             else:
                 metrics['tor'] = {
                     'status': 'error',
                     'connectivity': False,
-                    'proxy_host': tor_host,
-                    'proxy_port': tor_port,
-                    'connection_test': 'failed',
-                    'error': f"Connection failed (code: {result})"
+                    'ready_for_crawling': False,
+                    'proxy_working': False,
+                    'error': 'SOCKS5 proxy not accessible'
                 }
-                
         except Exception as e:
             metrics['tor'] = {
-                'status': 'error', 
-                'connectivity': False, 
+                'status': 'error',
+                'connectivity': False,
+                'ready_for_crawling': False,
                 'error': str(e)
             }
         
-        # Test I2P proxy connectivity (HTTP)
+        # Basic I2P connectivity test
         try:
             import socket
-            
-            # Test basic socket connection to I2P HTTP proxy
-            i2p_host = self.proxy_config['i2p_host']
-            i2p_port = self.proxy_config['i2p_port']
-            
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(5)
-            result = sock.connect_ex((i2p_host, i2p_port))
+            result = sock.connect_ex((self.proxy_config['i2p_host'], self.proxy_config['i2p_port']))
             sock.close()
             
             if result == 0:
                 metrics['i2p'] = {
-                    'status': 'healthy',
+                    'status': 'warning',
                     'connectivity': True,
-                    'proxy_connectivity': True,
-                    'proxy_host': i2p_host,
-                    'proxy_port': i2p_port,
-                    'connection_test': 'passed'
+                    'ready_for_crawling': False,  # Can't verify internal proxies in fallback
+                    'proxy_working': True,
+                    'internal_proxies': {
+                        'total_configured': 0,
+                        'active_count': 0,
+                        'minimum_required': 5,
+                        'sufficient': False,
+                        'note': 'Cannot test internal proxies in fallback mode'
+                    },
+                    'note': 'Basic socket test only - cannot verify internal proxies'
                 }
             else:
                 metrics['i2p'] = {
                     'status': 'error',
                     'connectivity': False,
-                    'proxy_connectivity': False,
-                    'proxy_host': i2p_host,
-                    'proxy_port': i2p_port,
-                    'connection_test': 'failed',
-                    'error': f"Connection failed (code: {result})"
+                    'ready_for_crawling': False,
+                    'proxy_working': False,
+                    'error': 'HTTP proxy not accessible',
+                    'internal_proxies': {
+                        'total_configured': 0,
+                        'active_count': 0,
+                        'minimum_required': 5,
+                        'sufficient': False,
+                        'error': 'Proxy not accessible'
+                    }
                 }
-                
         except Exception as e:
             metrics['i2p'] = {
-                'status': 'error', 
-                'connectivity': False, 
-                'proxy_connectivity': False,
-                'error': str(e)
-            }
-                # Test I2P HTTP proxy connectivity
-                proxy_url = f"http://{self.proxy_config['i2p_host']}:{self.proxy_config['i2p_port']}"
-                
-                try:
-                    # Test proxy connectivity first
-                    async with session.get(
-                        f"http://{self.proxy_config['i2p_host']}:{self.proxy_config['i2p_port']}"
-                    ) as response:
-                        metrics['i2p']['proxy_connectivity'] = True
-                except:
-                    metrics['i2p']['proxy_connectivity'] = False
-                
-                # Test I2P network connectivity through proxy
-                try:
-                    async with session.get(
-                        'http://stats.i2p',
-                        proxy=proxy_url
-                    ) as response:
-                        if response.status == 200:
-                            metrics['i2p'].update({
-                                'status': 'healthy',
-                                'connectivity': True,
-                                'network_access': True
-                            })
-                        else:
-                            metrics['i2p'].update({
-                                'status': 'partial',
-                                'connectivity': False,
-                                'network_access': False,
-                                'error': f"HTTP {response.status}"
-                            })
-                except Exception as e:
-                    metrics['i2p'].update({
-                        'status': 'error' if not metrics['i2p']['proxy_connectivity'] else 'partial',
-                        'connectivity': False,
-                        'network_access': False,
-                        'error': str(e)
-                    })
-        except Exception as e:
-            metrics['i2p'].update({
                 'status': 'error',
                 'connectivity': False,
-                'proxy_connectivity': False,
-                'error': str(e)
-            })
+                'ready_for_crawling': False,
+                'error': str(e),
+                'internal_proxies': {
+                    'total_configured': 0,
+                    'active_count': 0,
+                    'minimum_required': 5,
+                    'sufficient': False,
+                    'error': str(e)
+                }
+            }
+        
+        # Update overall readiness
+        tor_ready = metrics['tor'].get('ready_for_crawling', False)
+        i2p_ready = metrics['i2p'].get('ready_for_crawling', False)
+        
+        metrics['overall_readiness'] = {
+            'ready_for_crawling': tor_ready and i2p_ready,
+            'tor_ready': tor_ready,
+            'i2p_ready': i2p_ready,
+            'i2p_proxies_sufficient': False,  # Cannot verify in fallback
+            'minimum_i2p_proxies_required': 5,
+            'active_i2p_proxies': 0,
+            'readiness_summary': f'⚠️ Fallback mode - Tor: {"OK" if tor_ready else "Failed"}, I2P: {"OK" if i2p_ready else "Failed"} (proxy verification limited)'
+        }
         
         return metrics
     

@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: init-database-main-mysql
+  namespace: noctipede
+spec:
+  template:
+    spec:
+      initContainers:
+      - name: wait-for-database
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for main MariaDB server to be ready..."
+          until nc -z mariadb.mariadb-service 3306; do
+            echo "⏳ MariaDB at mariadb.mariadb-service:3306 not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ Main MariaDB server is ready!"
+      containers:
+      - name: init-db
+        image: ghcr.io/splinterstice/noctipede:latest
+        command: ["sh", "-c"]
+        args:
+        - |
+          echo "🗄️ Initializing database tables on main MariaDB server..."
+          echo "📍 Target: mariadb.mariadb-service:3306"
+          cd /app
+          python database/init_db.py
+          echo "✅ Database initialization completed on main MariaDB server!"
+        envFrom:
+        - configMapRef:
+            name: noctipede-config
+        - secretRef:
+            name: noctipede-secrets
+        env:
+        - name: MARIADB_HOST
+          value: "mariadb.mariadb-service"
+        - name: MARIADB_PORT
+          value: "3306"
+      restartPolicy: OnFailure
+  backoffLimit: 3

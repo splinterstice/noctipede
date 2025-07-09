@@ -66,15 +66,24 @@ class ContentModerator(BaseAnalyzer):
         finally:
             db_session.close()
     
-    def moderate_text(self, page_id: int, threshold: float = None) -> Optional[Dict[str, Any]]:
+    def moderate_text(self, page_id: int, db_session=None, threshold: float = None) -> Optional[Dict[str, Any]]:
         """Moderate text content for potentially harmful material."""
         threshold = threshold or self.settings.moderation_threshold
-        db_session = get_db_session()
+        should_close = False
+        
+        if not db_session:
+            from database.session import get_session_manager
+            session_manager = get_session_manager()
+            db_session = session_manager.get_session()
+            should_close = True
         
         try:
+            from database.models import Page
             # Get page record
             page = db_session.query(Page).filter_by(id=page_id).first()
             if not page or not page.content:
+                if should_close:
+                    db_session.close()
                 return None
             
             # Perform text moderation
@@ -94,7 +103,8 @@ class ContentModerator(BaseAnalyzer):
             self.logger.error(f"Error moderating text {page_id}: {e}")
             return None
         finally:
-            db_session.close()
+            if should_close:
+                db_session.close()
     
     def analyze_image_content(self, image_data: bytes) -> Optional[Dict[str, Any]]:
         """Analyze image for potentially harmful content with WebP support."""

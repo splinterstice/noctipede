@@ -5,13 +5,13 @@ metadata:
   namespace: noctipede
 data:
   # Database Configuration
-  MARIADB_HOST: "mariadb"
+  MARIADB_HOST: "mariadb.mariadb-service"
   MARIADB_PORT: "3306"
   MARIADB_USER: "splinter-research"
   MARIADB_DATABASE: "splinter-research"
   
   # MinIO Configuration
-  MINIO_ENDPOINT: "minio:9000"
+  MINIO_ENDPOINT: "minio-crawler-hl.minio-service:9000"
   MINIO_BUCKET_NAME: "noctipede-data"
   # MINIO_SECURE: Boolean - "true" = use HTTPS for MinIO connection, "false" = use HTTP
   MINIO_SECURE: "false"

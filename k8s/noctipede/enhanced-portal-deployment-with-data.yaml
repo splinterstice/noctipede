@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noctipede-portal
+  namespace: noctipede
+  labels:
+    app: noctipede-portal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noctipede-portal
+  template:
+    metadata:
+      labels:
+        app: noctipede-portal
+    spec:
+      initContainers:
+      - name: init-directories
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔧 Creating directories and setting permissions..."
+          mkdir -p /app/logs /app/output /app/data
+          chmod 777 /app/logs /app/output /app/data
+          echo "✅ Directories initialized"
+        volumeMounts:
+        - name: log-data
+          mountPath: /app/logs
+        - name: output-data
+          mountPath: /app/output
+        - name: data-storage
+          mountPath: /app/data
+      containers:
+      - name: noctipede-portal
+        image: ghcr.io/splinterstice/noctipede:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        command: ["sh", "-c"]
+        args:
+        - |
+          echo "🌐 Starting Noctipede Unified Portal..."
+          cd /app
+          PYTHONPATH=/app python -m portal.unified_portal
+        envFrom:
+        - configMapRef:
+            name: noctipede-config
+        - secretRef:
+            name: noctipede-secrets
+        env:
+        - name: MARIADB_HOST
+          value: "mariadb.mariadb-service"
+        - name: WEB_SERVER_PORT
+          value: "8080"
+        - name: WEB_SERVER_HOST
+          value: "0.0.0.0"
+        volumeMounts:
+        - name: output-data
+          mountPath: /app/output
+        - name: log-data
+          mountPath: /app/logs
+        - name: data-storage
+          mountPath: /app/data
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 15
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 30
+          failureThreshold: 5
+      volumes:
+      - name: output-data
+        persistentVolumeClaim:
+          claimName: noctipede-output-pvc
+      - name: log-data
+        persistentVolumeClaim:
+          claimName: noctipede-logs-pvc
+      - name: data-storage
+        persistentVolumeClaim:
+          claimName: noctipede-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: noctipede-portal-service
+  namespace: noctipede
+  labels:
+    app: noctipede-portal
+spec:
+  type: NodePort
+  selector:
+    app: noctipede-portal
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 32080
+    name: http

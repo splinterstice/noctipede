@@ -10,13 +10,21 @@ from .base import BaseAnalyzer
 class TextAnalyzer(BaseAnalyzer):
     """Analyzer for text content using AI models."""
     
-    def analyze_page_content(self, page_id: int) -> Optional[Dict[str, Any]]:
+    def analyze_page_content(self, page_id: int, db_session=None) -> Optional[Dict[str, Any]]:
         """Analyze text content of a page."""
-        db_session = get_db_session()
+        should_close = False
+        if not db_session:
+            from database.session import get_session_manager
+            session_manager = get_session_manager()
+            db_session = session_manager.get_session()
+            should_close = True
         
         try:
+            from database.models import Page
             page = db_session.query(Page).filter_by(id=page_id).first()
             if not page or not page.content:
+                if should_close:
+                    db_session.close()
                 return None
             
             # Perform different types of analysis
@@ -49,17 +57,26 @@ class TextAnalyzer(BaseAnalyzer):
                 page.language = language_result.get('language', 'unknown')
             
             # Save analysis results
-            self._save_content_analysis(page_id, 'comprehensive', results)
+            if results:
+                self._save_content_analysis(page_id, 'comprehensive', results)
             
-            db_session.commit()
+            # Commit changes if we're managing our own session
+            if should_close:
+                db_session.commit()
+            else:
+                # Just flush changes to make them visible in the current session
+                db_session.flush()
+                
             return results
             
         except Exception as e:
             self.logger.error(f"Error analyzing page content {page_id}: {e}")
-            db_session.rollback()
+            if should_close:
+                db_session.rollback()
             return None
         finally:
-            db_session.close()
+            if should_close:
+                db_session.close()
     
     def analyze_sentiment(self, text: str) -> Optional[Dict[str, Any]]:
         """Analyze sentiment of text."""

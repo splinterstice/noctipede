@@ -1,6 +1,7 @@
 """Base crawler class with common functionality."""
 
 import time
+import asyncio
 import hashlib
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List, Tuple
@@ -91,11 +92,11 @@ class BaseCrawler(ABC):
                 # Update site record
                 site.last_crawled = datetime.utcnow()
                 if success:
-                    site.crawl_count += 1
+                    site.crawl_count = (site.crawl_count or 0) + 1
                     site.error_count = 0
                     site.last_error = None
                 else:
-                    site.error_count += 1
+                    site.error_count = (site.error_count or 0) + 1
                 
                 # Transaction will be committed automatically by context manager
                 return success
@@ -134,7 +135,8 @@ class BaseCrawler(ABC):
                     created_at=datetime.utcnow()
                 )
                 db_session.add(site)
-                # Don't commit here - let the transaction manager handle it
+                # Flush to get the site ID without committing the transaction
+                db_session.flush()
             
             return site
             
@@ -165,7 +167,7 @@ class BaseCrawler(ABC):
             crawled_pages = set()
             site_domain = extract_domain(site.url)
             
-            while pages_to_crawl and len(crawled_pages) < self.settings.max_links_per_page:
+            while pages_to_crawl and len(crawled_pages) < min(self.settings.max_links_per_page, 100):  # Limit to 100 pages per site for deep crawling
                 current_url, current_depth, is_offsite = pages_to_crawl.pop(0)
                 
                 if current_url in crawled_pages:
@@ -180,13 +182,16 @@ class BaseCrawler(ABC):
                     continue
                 
                 # Crawl the page
+                self.logger.info(f"Crawling page {len(crawled_pages)+1}: {current_url} (depth: {current_depth}, offsite: {is_offsite})")
                 page_data = self._crawl_page(current_url, site.id, db_session)
                 if page_data:
                     crawled_pages.add(current_url)
                     
                     # Extract links for further crawling
                     if page_data.get('links'):
-                        for link in page_data['links'][:10]:  # Limit links per page
+                        # Process more links per page for deeper crawling
+                        links_to_process = min(50, len(page_data['links']))  # Increased from 10 to 50
+                        for link in page_data['links'][:links_to_process]:
                             if link not in crawled_pages and not any(url == link for url, _, _ in pages_to_crawl):
                                 # Determine if this link is offsite
                                 link_domain = extract_domain(link)
@@ -194,6 +199,8 @@ class BaseCrawler(ABC):
                                 
                                 # Add to queue with incremented depth
                                 pages_to_crawl.append((link, current_depth + 1, link_is_offsite))
+                        
+                        self.logger.debug(f"Added {min(links_to_process, len([l for l in page_data['links'][:links_to_process] if l not in crawled_pages]))} new links from {current_url} (depth {current_depth})")
                 
                 # Respect crawl delay
                 time.sleep(self.settings.crawl_delay_seconds)
@@ -282,7 +289,7 @@ class BaseCrawler(ABC):
                 try:
                     self.logger.info(f"Starting AI analysis for page: {url}")
                     # Page object should be properly bound to current session
-                    analysis_result = self.analysis_manager.analyze_page(page.id)
+                    analysis_result = self.analysis_manager.analyze_page(page.id, db_session=db_session)
                     if analysis_result:
                         self.logger.info(f"AI analysis completed for page: {url}")
                     else:

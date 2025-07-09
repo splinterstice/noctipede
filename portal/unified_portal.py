@@ -170,7 +170,7 @@ class UnifiedPortal:
         
         <div class="status">
             <strong>✅ System Status: All Dashboards Online</strong><br>
-            API Endpoints: /api/metrics | /api/health | /api/crawler | /api/system
+            API Endpoints: /api/metrics | /api/health | /api/crawler | /api/system | /api/readiness
         </div>
     </div>
 </body>
@@ -247,6 +247,45 @@ class UnifiedPortal:
             except Exception as e:
                 logger.error(f"Error getting system metrics: {e}")
                 return JSONResponse({"error": str(e)}, status_code=500)
+        
+        @self.app.get("/api/readiness")
+        async def get_readiness():
+            """Get crawler readiness status"""
+            try:
+                # Get network metrics to check readiness
+                network_metrics = await self.metrics_collector.collect_network_metrics()
+                overall_readiness = network_metrics.get('overall_readiness', {})
+                
+                ready_for_crawling = overall_readiness.get('ready_for_crawling', False)
+                
+                response_data = {
+                    'ready_for_crawling': ready_for_crawling,
+                    'timestamp': datetime.now().isoformat(),
+                    'readiness_details': overall_readiness,
+                    'network_status': {
+                        'tor': {
+                            'ready': network_metrics.get('tor', {}).get('ready_for_crawling', False),
+                            'status': network_metrics.get('tor', {}).get('status', 'unknown')
+                        },
+                        'i2p': {
+                            'ready': network_metrics.get('i2p', {}).get('ready_for_crawling', False),
+                            'status': network_metrics.get('i2p', {}).get('status', 'unknown'),
+                            'internal_proxies': network_metrics.get('i2p', {}).get('internal_proxies', {})
+                        }
+                    }
+                }
+                
+                # Return appropriate HTTP status code
+                status_code = 200 if ready_for_crawling else 503
+                return JSONResponse(response_data, status_code=status_code)
+                
+            except Exception as e:
+                logger.error(f"Error getting readiness status: {e}")
+                return JSONResponse({
+                    'ready_for_crawling': False,
+                    'error': str(e),
+                    'timestamp': datetime.now().isoformat()
+                }, status_code=500)
         
         @self.app.get("/api/health")
         async def health_check():

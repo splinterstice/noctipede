@@ -26,7 +26,7 @@ spec:
         args:
         - |
           echo "🔍 Waiting for MariaDB to be ready..."
-          until nc -z mariadb 3306; do
+          until nc -z mariadb.mariadb-service 3306; do
             echo "⏳ MariaDB not ready, waiting..."
             sleep 5
           done
@@ -100,6 +100,20 @@ spec:
           
           export SITES_FILE_PATH=/shared-data/sites.txt
           PYTHONPATH=/app python -m crawlers.main
+        env:
+        # Override Kubernetes service discovery environment variables
+        - name: MARIADB_PORT
+          value: "3306"
+        - name: TOR_PROXY_PORT
+          value: "9150"
+        - name: I2P_PROXY_PORT
+          value: "4444"
+        - name: I2P_PROXY_HOST
+          value: "i2p-proxy"
+        - name: TOR_PROXY_HOST
+          value: "tor-proxy"
+        - name: MARIADB_HOST
+          value: "mariadb.mariadb-service"
         envFrom:
         - configMapRef:
             name: noctipede-config
@@ -177,7 +191,7 @@ spec:
         args:
         - |
           echo "🔍 Waiting for MariaDB to be ready..."
-          until nc -z mariadb 3306; do
+          until nc -z mariadb.mariadb-service 3306; do
             echo "⏳ MariaDB not ready, waiting..."
             sleep 5
           done
@@ -200,6 +214,20 @@ spec:
           mkdir -p /tmp/output /tmp/logs
           export OUTPUT_DIR=/tmp/output
           PYTHONPATH=/app python -m portal.unified_portal
+        env:
+        # Override Kubernetes service discovery environment variables
+        - name: MARIADB_PORT
+          value: "3306"
+        - name: TOR_PROXY_PORT
+          value: "9150"
+        - name: I2P_PROXY_PORT
+          value: "4444"
+        - name: I2P_PROXY_HOST
+          value: "i2p-proxy"
+        - name: TOR_PROXY_HOST
+          value: "tor-proxy"
+        - name: MARIADB_HOST
+          value: "mariadb.mariadb-service"
         envFrom:
         - configMapRef:
             name: noctipede-config

@@ -39,7 +39,7 @@ data:
             
             # Database configuration for direct connections
             self.db_config = {
-                'host': os.getenv('MARIADB_HOST', 'mariadb'),
+                'host': os.getenv('MARIADB_HOST', 'mariadb.mariadb-service'),
                 'port': int(os.getenv('MARIADB_PORT', 3306)),
                 'user': os.getenv('MARIADB_USER', 'splinter-research'),
                 'password': os.getenv('MARIADB_PASSWORD'),

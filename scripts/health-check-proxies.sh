@@ -9,7 +9,7 @@ echo "🔍 Starting proxy health checks..."
 
 # Test Tor proxy with DuckDuckGo onion service
 echo "🧅 Testing Tor proxy connectivity..."
-TOR_TEST_URL="http://duckduckgogg42ts72.onion"
+TOR_TEST_URL="http://facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion"
 TOR_PROXY="tor-proxy:9050"
 
 attempt=1
