@@ -1,0 +1,82 @@
+---
+# Main Ingress for Noctipede Portal
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: noctipede-portal-ingress
+  namespace: noctipede
+  labels:
+    app: noctipede-portal
+    component: web
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.rule: "Host(`noctipede.local`) || Host(`noctipede-portal.local`)"
+spec:
+  rules:
+  # Local hostname access
+  - host: noctipede.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-portal-service
+            port:
+              number: 8080
+  - host: noctipede-portal.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-portal-service
+            port:
+              number: 8080
+
+---
+# IP-based Ingress for direct access
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: noctipede-portal-ip-ingress
+  namespace: noctipede
+  labels:
+    app: noctipede-portal
+    component: web
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.rule: "PathPrefix(`/noctipede`)"
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /noctipede
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-portal-service
+            port:
+              number: 8080
+
+---
+# Service for Noctipede Portal (ensuring it's properly configured)
+apiVersion: v1
+kind: Service
+metadata:
+  name: noctipede-portal-service-fixed
+  namespace: noctipede
+  labels:
+    app: noctipede-portal
+    component: web
+spec:
+  type: NodePort
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+    nodePort: 32421  # Keep the same NodePort for consistency
+  selector:
+    app: noctipede-portal

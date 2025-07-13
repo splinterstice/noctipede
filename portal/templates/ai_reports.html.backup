@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Reports - Noctipede</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .ai-reports-container {
+            display: grid;
+            grid-template-rows: 300px 1fr;
+            grid-template-columns: 300px 1fr 300px;
+            height: 100vh;
+            gap: 10px;
+            padding: 10px;
+        }
+
+        .top-row {
+            display: grid;
+            grid-template-columns: 1fr 2fr 1fr;
+            grid-column: 1 / -1;
+            gap: 10px;
+        }
+
+        .middle-row {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            grid-column: 1 / -1;
+            gap: 10px;
+        }
+
+        .panel {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow-y: auto;
+        }
+
+        .panel-header {
+            font-weight: bold;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #007bff;
+            color: #007bff;
+        }
+
+        .dataset-generator {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .query-engine {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .memeclip-widget {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+
+        .dataset-management {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            color: white;
+        }
+
+        .results-display {
+            background: #f8f9fa;
+        }
+
+        .btn-custom {
+            margin: 5px;
+            border-radius: 20px;
+        }
+
+        .form-control, .form-select {
+            margin-bottom: 10px;
+        }
+
+        .query-editor {
+            height: 150px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .results-table {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .memeclip-frame {
+            width: 100%;
+            height: 200px;
+            border: none;
+            border-radius: 5px;
+        }
+
+        .screenshot-preview {
+            max-width: 100px;
+            max-height: 60px;
+            cursor: pointer;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
+
+        .spinner-border {
+            width: 2rem;
+            height: 2rem;
+        }
+
+        /* Markdown content styling */
+        .ai-response {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 10px 0;
+        }
+
+        .markdown-content h1 {
+            color: #007bff;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        .markdown-content h2 {
+            color: #0056b3;
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+
+        .markdown-content h3 {
+            color: #495057;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        .markdown-content ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+
+        .markdown-content li {
+            margin: 5px 0;
+            list-style-type: disc;
+        }
+
+        .markdown-content code {
+            background: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .markdown-content strong {
+            font-weight: 600;
+            color: #212529;
+        }
+
+        .markdown-content p {
+            margin: 10px 0;
+            line-height: 1.6;
+        }
+
+        /* Query Templates Styling */
+        .template-item {
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+
+        .template-header {
+            background: #f8f9fa;
+            padding: 10px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .template-header:hover {
+            background: #e9ecef;
+        }
+
+        .template-body {
+            padding: 15px;
+            background: white;
+        }
+
+        .template-query {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            margin: 10px 0;
+        }
+
+        .template-category {
+            background: #007bff;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: 500;
+        }
+
+        .template-use-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            cursor: pointer;
+        }
+
+        .template-use-btn:hover {
+            background: #218838;
+        }
+
+        .query-editor {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        /* Structured Data Styling */
+        .structured-data-section {
+            border-top: 2px solid #007bff;
+            padding-top: 20px;
+        }
+
+        .structured-data-section .card {
+            border: 1px solid #dee2e6;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .structured-data-section .progress {
+            border-radius: 15px;
+        }
+
+        .structured-data-section .progress-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 500;
+            font-size: 0.9em;
+        }
+
+        .structured-data-section .badge {
+            font-size: 0.8em;
+            margin-right: 5px;
+        }
+
+        .structured-data-section .table-sm td {
+            vertical-align: middle;
+        }
+
+        .ai-response {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 12px;
+            padding: 25px;
+            margin: 15px 0;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="ai-reports-container">
+        <!-- Top Row -->
+        <div class="top-row">
+            <!-- Dataset Generator -->
+            <div class="panel dataset-generator">
+                <div class="panel-header">
+                    <i class="fas fa-database"></i> Dataset Generator
+                </div>
+                <form id="datasetForm">
+                    <input type="text" class="form-control" id="datasetName" placeholder="Dataset Name" required>
+                    <textarea class="form-control" id="datasetDescription" placeholder="Description" rows="2"></textarea>
+                    <select class="form-select" id="partitionStrategy">
+                        <option value="by_domain">By Domain</option>
+                        <option value="by_date">By Date</option>
+                        <option value="by_network">By Network</option>
+                    </select>
+                    <button type="submit" class="btn btn-light btn-custom">
+                        <i class="fas fa-plus"></i> Create Dataset
+                    </button>
+                </form>
+                <div id="datasetStatus" class="mt-3"></div>
+            </div>
+
+            <!-- Query Engine -->
+            <div class="panel query-engine">
+                <div class="panel-header">
+                    <i class="fas fa-search"></i> Query Engine
+                </div>
+                
+                <!-- Query Templates Section -->
+                <div class="mb-3">
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="collapse" 
+                                data-bs-target="#queryTemplates" aria-expanded="false" aria-controls="queryTemplates">
+                            <i class="fas fa-templates"></i> Query Templates & Examples
+                        </button>
+                        <button class="btn btn-outline-info btn-sm" type="button" data-bs-toggle="collapse" 
+                                data-bs-target="#queryHelp" aria-expanded="false" aria-controls="queryHelp">
+                            <i class="fas fa-question-circle"></i> Help & Guide
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="collapse" id="queryHelp">
+                    <div class="card card-body mb-3" style="background: #f8f9fa;">
+                        <h6 class="text-primary mb-2"><i class="fas fa-info-circle"></i> How to Use AI Reports</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6 class="text-secondary">Natural Language Queries</h6>
+                                <ul class="small">
+                                    <li>Ask questions in plain English</li>
+                                    <li>Example: "Show me all Tor sites"</li>
+                                    <li>Example: "What media has been flagged?"</li>
+                                    <li>Example: "Generate an overview"</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6 class="text-secondary">Available Data</h6>
+                                <ul class="small">
+                                    <li><strong>Sites:</strong> Crawled websites and domains</li>
+                                    <li><strong>Pages:</strong> Individual web pages</li>
+                                    <li><strong>Media:</strong> Images, videos, files</li>
+                                    <li><strong>Networks:</strong> Clearnet, Tor (.onion), I2P</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="collapse" id="queryTemplates">
+                    <div class="card card-body mb-3" style="max-height: 300px; overflow-y: auto;">
+                        <div id="templatesContainer">
+                            <div class="text-center">
+                                <div class="spinner-border spinner-border-sm" role="status">
+                                    <span class="visually-hidden">Loading templates...</span>
+                                </div>
+                                <small class="text-muted d-block">Loading query templates...</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <form id="queryForm">
+                    <select class="form-select mb-2" id="queryDataset" multiple>
+                        <option value="">Select Datasets...</option>
+                    </select>
+                    <textarea class="form-control query-editor mb-2" id="sqlQuery" rows="4"
+                              placeholder="Enter your natural language query here, e.g., 'Generate an overview of all crawled data' or 'Show me network analysis'"></textarea>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary flex-fill">
+                            <i class="fas fa-play"></i> Execute Query
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" id="saveQuery">
+                            <i class="fas fa-save"></i> Save
+                        </button>
+                        <button type="button" class="btn btn-outline-info" id="clearQuery">
+                            <i class="fas fa-eraser"></i> Clear
+                        </button>
+                    </div>
+                </form>
+                <div id="queryStatus" class="mt-2"></div>
+            </div>
+
+            <!-- MemeCLIP Widget -->
+            <div class="panel memeclip-widget">
+                <div class="panel-header">
+                    <i class="fas fa-image"></i> MemeCLIP Analysis
+                </div>
+                <div id="memeclipContainer">
+                    <iframe id="memeclipFrame" class="memeclip-frame" 
+                            src="about:blank" title="MemeCLIP Interface">
+                    </iframe>
+                    <div class="mt-2">
+                        <input type="file" class="form-control" id="imageUpload" accept="image/*" multiple>
+                        <button class="btn btn-light btn-custom" id="analyzeImages">
+                            <i class="fas fa-brain"></i> Analyze Images
+                        </button>
+                    </div>
+                </div>
+                <div id="memeclipResults" class="mt-2"></div>
+            </div>
+        </div>
+
+        <!-- Middle Row -->
+        <div class="middle-row">
+            <!-- Dataset Management -->
+            <div class="panel dataset-management">
+                <div class="panel-header">
+                    <i class="fas fa-cogs"></i> Dataset Management
+                </div>
+                <div class="d-grid gap-2">
+                    <button class="btn btn-light btn-custom" id="refreshDatasets">
+                        <i class="fas fa-sync"></i> Refresh
+                    </button>
+                    <button class="btn btn-light btn-custom" id="newDataset">
+                        <i class="fas fa-plus"></i> New
+                    </button>
+                    <button class="btn btn-light btn-custom" id="editDataset" disabled>
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button class="btn btn-light btn-custom" id="deleteDataset" disabled>
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                    <button class="btn btn-light btn-custom" id="exportHive" disabled>
+                        <i class="fas fa-download"></i> Export HIVE
+                    </button>
+                </div>
+                
+                <div class="mt-3">
+                    <h6>Available Datasets</h6>
+                    <div id="datasetList" class="list-group">
+                        <div class="loading">
+                            <div class="spinner-border text-light" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Display -->
+            <div class="panel results-display">
+                <div class="panel-header">
+                    <i class="fas fa-chart-bar"></i> Query Results & Reports
+                    <div class="float-end">
+                        <button class="btn btn-primary btn-sm" id="generateReport">
+                            <i class="fas fa-file-alt"></i> Generate Report
+                        </button>
+                        <button class="btn btn-success btn-sm" id="captureScreenshots">
+                            <i class="fas fa-camera"></i> Screenshots
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Results Tabs -->
+                <ul class="nav nav-tabs" id="resultsTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="data-tab" data-bs-toggle="tab" 
+                                data-bs-target="#data-pane" type="button" role="tab">
+                            <i class="fas fa-table"></i> Data
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="reports-tab" data-bs-toggle="tab" 
+                                data-bs-target="#reports-pane" type="button" role="tab">
+                            <i class="fas fa-file-alt"></i> Reports
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="screenshots-tab" data-bs-toggle="tab" 
+                                data-bs-target="#screenshots-pane" type="button" role="tab">
+                            <i class="fas fa-images"></i> Screenshots
+                        </button>
+                    </li>
+                </ul>
+                
+                <div class="tab-content" id="resultsTabContent">
+                    <!-- Data Tab -->
+                    <div class="tab-pane fade show active" id="data-pane" role="tabpanel">
+                        <div id="queryResults" class="mt-3">
+                            <div class="text-center text-muted">
+                                <i class="fas fa-search fa-3x mb-3"></i>
+                                <p>Execute a query to see results here</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Reports Tab -->
+                    <div class="tab-pane fade" id="reports-pane" role="tabpanel">
+                        <div id="generatedReports" class="mt-3">
+                            <div class="text-center text-muted">
+                                <i class="fas fa-file-alt fa-3x mb-3"></i>
+                                <p>Generated reports will appear here</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Screenshots Tab -->
+                    <div class="tab-pane fade" id="screenshots-pane" role="tabpanel">
+                        <div id="screenshotGallery" class="mt-3">
+                            <div class="text-center text-muted">
+                                <i class="fas fa-camera fa-3x mb-3"></i>
+                                <p>Website screenshots will appear here</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- Dataset Edit Modal -->
+    <div class="modal fade" id="datasetModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Dataset</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editDatasetForm">
+                        <input type="hidden" id="editDatasetId">
+                        <div class="mb-3">
+                            <label class="form-label">Name</label>
+                            <input type="text" class="form-control" id="editDatasetName" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <textarea class="form-control" id="editDatasetDescription" rows="3"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Status</label>
+                            <select class="form-select" id="editDatasetStatus">
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                                <option value="archived">Archived</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveDatasetChanges">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screenshot Modal -->
+    <div class="modal fade" id="screenshotModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Screenshot Preview</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <img id="screenshotPreview" class="img-fluid" src="" alt="Screenshot">
+                    <div id="screenshotInfo" class="mt-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/ai_reports/js/ai_reports.js"></script>
+</body>
+</html>

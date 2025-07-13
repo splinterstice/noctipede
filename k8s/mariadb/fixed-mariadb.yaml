@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mariadb-storage-pvc
+  namespace: noctipede
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: longhorn
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariadb
+  namespace: noctipede
+  labels:
+    app: mariadb
+spec:
+  ports:
+  - port: 3306
+    name: mysql
+  selector:
+    app: mariadb
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mariadb
+  namespace: noctipede
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mariadb
+  template:
+    metadata:
+      labels:
+        app: mariadb
+    spec:
+      securityContext:
+        fsGroup: 999
+      initContainers:
+      - name: fix-permissions
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔧 Fixing MariaDB data directory permissions..."
+          chown -R 999:999 /var/lib/mysql
+          chmod -R 755 /var/lib/mysql
+          echo "✅ Permissions fixed"
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+        securityContext:
+          runAsUser: 0
+      containers:
+      - name: mariadb
+        image: mariadb:11.0
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: MARIA_ROOT_PASSWORD
+        - name: MYSQL_DATABASE
+          value: "splinter-research"
+        - name: MYSQL_USER
+          value: "splinter-research"
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mariadb-secret
+              key: MARIA_USER_PASSWORD
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+        command:
+        - mariadbd
+        - --character-set-server=utf8mb4
+        - --collation-server=utf8mb4_unicode_ci
+        - --max-connections=1000
+        - --max-allowed-packet=256M
+        - --bind-address=0.0.0.0
+        - --user=mysql
+        readinessProbe:
+          tcpSocket:
+            port: 3306
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 5
+        livenessProbe:
+          tcpSocket:
+            port: 3306
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        securityContext:
+          runAsUser: 999
+          runAsGroup: 999
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mariadb-storage-pvc

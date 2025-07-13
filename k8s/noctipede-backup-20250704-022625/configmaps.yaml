@@ -1,0 +1,198 @@
+apiVersion: v1
+items:
+- apiVersion: v1
+  data:
+    i2pd.conf: "# Minimal I2PD Configuration for Noctipede Crawler\n# Basic settings
+      that work with I2PD\n\n# Network settings\nipv4 = true\nipv6 = false\nnat =
+      true\n\n# Logging\nlog = stdout\nloglevel = info\n\n# Data directory\ndatadir
+      = /home/i2pd/data\n\n# Daemon settings\ndaemon = false\n\n# HTTP Proxy (essential
+      for crawler)\nhttpproxy.enabled = true\nhttpproxy.address = 0.0.0.0\nhttpproxy.port
+      = 4444\nhttpproxy.keys = http-proxy-keys.dat\n\n# Web console\nhttp.enabled
+      = true\nhttp.address = 0.0.0.0\nhttp.port = 7070\n\n# SAM interface\nsam.enabled
+      = true\nsam.address = 0.0.0.0\nsam.port = 7656\n\n# Basic performance settings\nlimits.transittunnels
+      = 1000\n\n# Reseeding\nreseed.verify = true\n\n# NTCP2 transport\nntcp2.enabled
+      = true\n\n# SSU2 transport  \nssu2.enabled = true\n"
+  kind: ConfigMap
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","data":{"i2pd.conf":"# Minimal I2PD Configuration for Noctipede Crawler\n# Basic settings that work with I2PD\n\n# Network settings\nipv4 = true\nipv6 = false\nnat = true\n\n# Logging\nlog = stdout\nloglevel = info\n\n# Data directory\ndatadir = /home/i2pd/data\n\n# Daemon settings\ndaemon = false\n\n# HTTP Proxy (essential for crawler)\nhttpproxy.enabled = true\nhttpproxy.address = 0.0.0.0\nhttpproxy.port = 4444\nhttpproxy.keys = http-proxy-keys.dat\n\n# Web console\nhttp.enabled = true\nhttp.address = 0.0.0.0\nhttp.port = 7070\n\n# SAM interface\nsam.enabled = true\nsam.address = 0.0.0.0\nsam.port = 7656\n\n# Basic performance settings\nlimits.transittunnels = 1000\n\n# Reseeding\nreseed.verify = true\n\n# NTCP2 transport\nntcp2.enabled = true\n\n# SSU2 transport  \nssu2.enabled = true\n"},"kind":"ConfigMap","metadata":{"annotations":{},"labels":{"app":"i2p-proxy","component":"proxy"},"name":"i2p-config","namespace":"noctipede"}}
+    creationTimestamp: "2025-07-04T09:07:05Z"
+    labels:
+      app: i2p-proxy
+      component: proxy
+    name: i2p-config
+    namespace: noctipede
+    resourceVersion: "2027058"
+    uid: e14759b3-3a99-487b-b759-126cd88600b5
+- apiVersion: v1
+  data:
+    ca.crt: |
+      -----BEGIN CERTIFICATE-----
+      MIIBdzCCAR2gAwIBAgIBADAKBggqhkjOPQQDAjAjMSEwHwYDVQQDDBhrM3Mtc2Vy
+      dmVyLWNhQDE3NTE0Mzk3ODEwHhcNMjUwNzAyMDcwMzAxWhcNMzUwNjMwMDcwMzAx
+      WjAjMSEwHwYDVQQDDBhrM3Mtc2VydmVyLWNhQDE3NTE0Mzk3ODEwWTATBgcqhkjO
+      PQIBBggqhkjOPQMBBwNCAAQaPpo2Zp1GooQWvUZe+AZmuZA81v1o52fh12l/sMJb
+      mdWAzDDoJbRNVmPs9U48Nr+N7MdziSfRDNDsKUlzLvdRo0IwQDAOBgNVHQ8BAf8E
+      BAMCAqQwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUroDzuFsKATtHYpGN+emx
+      Qx99tBYwCgYIKoZIzj0EAwIDSAAwRQIhAPf/q5AqtMTGqlgsTx0tRVqGLQnBg7vs
+      1GhC1wJ4q0f1AiB10v4SKAtpMInpesBQAKe9wcbj+E0yZSm+JALDvmXmYg==
+      -----END CERTIFICATE-----
+  kind: ConfigMap
+  metadata:
+    annotations:
+      kubernetes.io/description: Contains a CA bundle that can be used to verify the
+        kube-apiserver when using internal endpoints such as the internal service
+        IP or kubernetes.default.svc. No other usage is guaranteed across distributions
+        of Kubernetes clusters.
+    creationTimestamp: "2025-07-04T09:06:17Z"
+    name: kube-root-ca.crt
+    namespace: noctipede
+    resourceVersion: "2026097"
+    uid: 6be5de5b-ff95-4fad-8cd2-f41bd5e24389
+- apiVersion: v1
+  data:
+    my.cnf: |
+      [mariadb]
+      bind-address=*
+      default_storage_engine=InnoDB
+      binlog_format=row
+      innodb_autoinc_lock_mode=2
+      max_allowed_packet=256M
+
+      # High-performance connection settings for crawler workload
+      max_connections=1000
+      max_user_connections=950
+      thread_cache_size=100
+      table_open_cache=4000
+
+      # InnoDB optimizations for high concurrency
+      innodb_buffer_pool_size=2G
+      innodb_log_file_size=512M
+      innodb_log_buffer_size=64M
+      innodb_flush_log_at_trx_commit=2
+      innodb_thread_concurrency=0
+      innodb_read_io_threads=8
+      innodb_write_io_threads=8
+
+      # Query cache and connection optimizations
+      query_cache_type=1
+      query_cache_size=128M
+      connect_timeout=60
+      wait_timeout=600
+      interactive_timeout=600
+
+      # Temporary table optimizations
+      tmp_table_size=256M
+      max_heap_table_size=256M
+  kind: ConfigMap
+  metadata:
+    creationTimestamp: "2025-07-04T09:06:22Z"
+    name: mariadb-config
+    namespace: noctipede
+    ownerReferences:
+    - apiVersion: k8s.mariadb.com/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: MariaDB
+      name: mariadb
+      uid: 4017b5f6-8576-4297-b248-d1eccf943cde
+    resourceVersion: "2026158"
+    uid: 206e2a89-df57-4aff-bb21-98a006f0cb86
+- apiVersion: v1
+  data:
+    0-default.cnf: |
+      [mariadb]
+      skip-name-resolve
+      temp-pool
+  kind: ConfigMap
+  metadata:
+    creationTimestamp: "2025-07-04T09:06:22Z"
+    name: mariadb-config-default
+    namespace: noctipede
+    ownerReferences:
+    - apiVersion: k8s.mariadb.com/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: MariaDB
+      name: mariadb
+      uid: 4017b5f6-8576-4297-b248-d1eccf943cde
+    resourceVersion: "2026157"
+    uid: a8c3d22b-7d78-41a2-9b65-a9ad35df7f57
+- apiVersion: v1
+  data:
+    1-tls.cnf: |
+      [mariadb]
+      ssl_cert = /etc/pki/server.crt
+      ssl_key = /etc/pki/server.key
+      ssl_ca = /etc/pki/ca.crt
+      require_secure_transport = false
+      tls_version = TLSv1.3
+  kind: ConfigMap
+  metadata:
+    creationTimestamp: "2025-07-04T09:06:22Z"
+    name: mariadb-config-tls
+    namespace: noctipede
+    ownerReferences:
+    - apiVersion: k8s.mariadb.com/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: MariaDB
+      name: mariadb
+      uid: 4017b5f6-8576-4297-b248-d1eccf943cde
+    resourceVersion: "2026163"
+    uid: fab232e1-5f63-4019-8a81-1d514da4de4b
+- apiVersion: v1
+  data:
+    BATCH_SIZE: "100"
+    CONTENT_ANALYSIS_ENABLED: "true"
+    CRAWL_DELAY_SECONDS: "3"
+    DB_MAX_OVERFLOW: "30"
+    DB_POOL_SIZE: "20"
+    I2P_INTERNAL_PROXIES: notbob.i2p,purokishi.i2p,false.i2p,stormycloud.i2p
+    I2P_PROXY_HOST: i2p-proxy
+    I2P_PROXY_PORT: "4444"
+    IMAGE_ANALYSIS_ENABLED: "true"
+    LOG_LEVEL: INFO
+    MARIADB_DATABASE: splinter-research
+    MARIADB_HOST: mariadb
+    MARIADB_PORT: "3306"
+    MARIADB_USER: splinter-research
+    MAX_CONCURRENT_CRAWLERS: "10"
+    MAX_CRAWL_DEPTH: "10"
+    MAX_IMAGE_SIZE_MB: "50"
+    MAX_LINKS_PER_PAGE: "500"
+    MAX_OFFSITE_DEPTH: "1"
+    MAX_QUEUE_SIZE: "1000"
+    MINIO_BUCKET_NAME: noctipede-data
+    MINIO_ENDPOINT: minio.noctipede:9000
+    MINIO_SECURE: "false"
+    MODERATION_THRESHOLD: "30"
+    OLLAMA_ENDPOINT: http://10.1.1.12:2701
+    OLLAMA_MODERATION_MODEL: gemma3:12b
+    OLLAMA_TEXT_MODEL: gemma3:12b
+    OLLAMA_VISION_MODEL: llama3.2-vision:11b
+    OUTPUT_DIR: /app/output
+    RECENT_CRAWL_HOURS: "24"
+    SITES_FILE_PATH: /app/data/sites.txt
+    SKIP_RECENT_CRAWLS: "false"
+    SUPPORTED_IMAGE_FORMATS: webp,jpg,jpeg,png,gif,bmp,tiff,svg
+    TOR_PROXY_HOST: tor-proxy
+    TOR_PROXY_PORT: "9150"
+    USE_I2P_INTERNAL_PROXIES: "true"
+    WEB_SERVER_HOST: 0.0.0.0
+    WEB_SERVER_PORT: "8080"
+    WORKER_THREADS: "4"
+  kind: ConfigMap
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","data":{"BATCH_SIZE":"100","CONTENT_ANALYSIS_ENABLED":"true","CRAWL_DELAY_SECONDS":"3","DB_MAX_OVERFLOW":"30","DB_POOL_SIZE":"20","I2P_INTERNAL_PROXIES":"notbob.i2p,purokishi.i2p,false.i2p,stormycloud.i2p","I2P_PROXY_HOST":"i2p-proxy","I2P_PROXY_PORT":"4444","IMAGE_ANALYSIS_ENABLED":"true","LOG_LEVEL":"INFO","MARIADB_DATABASE":"splinter-research","MARIADB_HOST":"mariadb","MARIADB_PORT":"3306","MARIADB_USER":"splinter-research","MAX_CONCURRENT_CRAWLERS":"10","MAX_CRAWL_DEPTH":"10","MAX_IMAGE_SIZE_MB":"50","MAX_LINKS_PER_PAGE":"500","MAX_OFFSITE_DEPTH":"1","MAX_QUEUE_SIZE":"1000","MINIO_BUCKET_NAME":"noctipede-data","MINIO_ENDPOINT":"minio.noctipede:9000","MINIO_SECURE":"false","MODERATION_THRESHOLD":"30","OLLAMA_ENDPOINT":"http://10.1.1.12:2701","OLLAMA_MODERATION_MODEL":"gemma3:12b","OLLAMA_TEXT_MODEL":"gemma3:12b","OLLAMA_VISION_MODEL":"llama3.2-vision:11b","OUTPUT_DIR":"/app/output","RECENT_CRAWL_HOURS":"24","SITES_FILE_PATH":"/app/data/sites.txt","SKIP_RECENT_CRAWLS":"false","SUPPORTED_IMAGE_FORMATS":"webp,jpg,jpeg,png,gif,bmp,tiff,svg","TOR_PROXY_HOST":"tor-proxy","TOR_PROXY_PORT":"9150","USE_I2P_INTERNAL_PROXIES":"true","WEB_SERVER_HOST":"0.0.0.0","WEB_SERVER_PORT":"8080","WORKER_THREADS":"4"},"kind":"ConfigMap","metadata":{"annotations":{},"name":"noctipede-config","namespace":"noctipede"}}
+    creationTimestamp: "2025-07-04T09:06:19Z"
+    name: noctipede-config
+    namespace: noctipede
+    resourceVersion: "2026128"
+    uid: fba9aa74-8e2f-4604-84ca-65c810ec6dfa
+kind: List
+metadata:
+  resourceVersion: ""

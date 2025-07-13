@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: noctipede-config
+  namespace: noctipede
+data:
+  # Database Configuration
+  MARIADB_HOST: "mariadb.mariadb-service"
+  MARIADB_PORT: "3306"
+  MARIADB_USER: "splinter-research"
+  MARIADB_DATABASE: "splinter-research"
+  
+  # MinIO Configuration
+  MINIO_ENDPOINT: "minio-crawler-hl.minio-service:9000"
+  MINIO_BUCKET_NAME: "noctipede-data"
+  # MINIO_SECURE: Boolean - "true" = use HTTPS for MinIO connection, "false" = use HTTP
+  MINIO_SECURE: "false"
+  
+  # AI/Ollama Configuration
+  OLLAMA_ENDPOINT: "http://10.1.1.12:2701"
+  OLLAMA_VISION_MODEL: "llama3.2-vision:11b"
+  OLLAMA_TEXT_MODEL: "noctipede-text"
+  OLLAMA_MODERATION_MODEL: "noctipede-moderation"
+  
+  # Content Analysis Configuration
+  # CONTENT_ANALYSIS_ENABLED: Boolean - "true" = enable AI content analysis, "false" = disable AI analysis
+  CONTENT_ANALYSIS_ENABLED: "true"
+  # IMAGE_ANALYSIS_ENABLED: Boolean - "true" = enable AI image analysis, "false" = disable image analysis
+  IMAGE_ANALYSIS_ENABLED: "true"
+  MODERATION_THRESHOLD: "30"
+  MAX_IMAGE_SIZE_MB: "10"
+  SUPPORTED_IMAGE_FORMATS: "webp,jpg,jpeg,png,gif,bmp,tiff,svg"
+  
+  # Crawler Configuration
+  MAX_LINKS_PER_PAGE: "500"
+  MAX_QUEUE_SIZE: "1000"
+  MAX_CRAWL_DEPTH: "10"          # Maximum depth to crawl within same site
+  MAX_OFFSITE_DEPTH: "1"         # Maximum depth to crawl on external/offsite links
+  CRAWL_DELAY_SECONDS: "3"
+  # SKIP_RECENT_CRAWLS: Boolean - "true" = skip sites crawled within RECENT_CRAWL_HOURS, "false" = crawl all sites regardless of recent activity
+  SKIP_RECENT_CRAWLS: "false"
+  RECENT_CRAWL_HOURS: "24"       # Hours to consider a crawl "recent" when SKIP_RECENT_CRAWLS is true
+  MAX_CONCURRENT_CRAWLERS: "10"
+  MAX_CONTENT_SIZE: "100000"     # Maximum content size to store per page (100KB default)
+  
+  # Network Configuration
+  TOR_PROXY_HOST: "tor-proxy"
+  TOR_PROXY_PORT: "9150"
+  I2P_PROXY_HOST: "i2p-proxy"
+  I2P_PROXY_PORT: "4444"
+  # USE_I2P_INTERNAL_PROXIES: Boolean - "true" = use I2P internal proxies for better connectivity, "false" = use direct proxy only
+  USE_I2P_INTERNAL_PROXIES: "true"
+  I2P_INTERNAL_PROXIES: "notbob.i2p,purokishi.i2p,false.i2p,stormycloud.i2p,reg.i2p,identiguy.i2p,echelon.i2p,planet.i2p,i2pwiki.i2p,tracker2.postman.i2p,diftracker.i2p"
+  
+  # Application Configuration
+  LOG_LEVEL: "INFO"
+  OUTPUT_DIR: "/app/output"
+  SITES_FILE_PATH: "/nfs-sites/sites.txt"
+  WEB_SERVER_PORT: "8080"
+  WEB_SERVER_HOST: "0.0.0.0"
+  
+  # Performance Configuration
+  DB_POOL_SIZE: "20"
+  DB_MAX_OVERFLOW: "30"
+  WORKER_THREADS: "4"
+  BATCH_SIZE: "100"

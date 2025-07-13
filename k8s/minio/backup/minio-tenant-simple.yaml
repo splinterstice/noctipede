@@ -1,0 +1,52 @@
+apiVersion: minio.min.io/v2
+kind: Tenant
+metadata:
+  name: minio-simple
+  namespace: noctipede
+spec:
+  # reference the secret you just created
+  configuration:
+    name: minio-crawler-config
+
+  # Disable TLS completely
+  requestAutoCert: false
+  
+  # expose both the S3 API and the Console
+  exposeServices:
+    minio: true
+    console: true
+
+  pools:
+    - name: minio-simple
+      servers: 1             # Single pod for simplicity
+      volumesPerServer: 1     # Single volume per pod
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 200Gi  # Larger single volume
+          storageClassName: longhorn
+
+      # Configure resource limits
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+
+      # Security context
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        runAsNonRoot: true
+
+  # Environment variables for MinIO
+  env:
+    - name: MINIO_PROMETHEUS_AUTH_TYPE
+      value: "public"
+    - name: MINIO_BROWSER_REDIRECT_URL
+      value: "http://minio-simple-console.noctipede:9001"

@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Reports - Advanced Analytics Platform</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --dark-bg: #1a1a2e;
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --border-radius: 15px;
+        }
+
+        body {
+            background: var(--primary-gradient);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow-x: hidden;
+        }
+
+        .ai-reports-container {
+            display: grid;
+            grid-template-rows: auto 300px 1fr;
+            grid-template-columns: 300px 1fr 300px;
+            height: 100vh;
+            gap: 15px;
+            padding: 15px;
+        }
+
+        .header-section {
+            grid-column: 1 / -1;
+            text-align: center;
+            color: white;
+            margin-bottom: 10px;
+        }
+
+        .top-row {
+            display: grid;
+            grid-template-columns: 1fr 2fr 1fr;
+            grid-column: 1 / -1;
+            gap: 15px;
+        }
+
+        .middle-row {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            grid-column: 1 / -1;
+            gap: 15px;
+        }
+
+        .component-card {
+            background: var(--card-bg);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .component-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .component-header h5 {
+            margin: 0;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .component-header i {
+            margin-right: 10px;
+            color: #667eea;
+        }
+
+        /* Dataset Generator Styles */
+        .dataset-generator {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .dataset-generator .component-header {
+            border-bottom-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .dataset-generator .component-header h5,
+        .dataset-generator .component-header i {
+            color: white;
+        }
+
+        /* Query Engine Styles */
+        .query-engine {
+            position: relative;
+        }
+
+        .sql-editor {
+            height: 200px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+        }
+
+        .query-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        /* MemeCLIP Widget Styles */
+        .memeclip-widget {
+            background: var(--secondary-gradient);
+            color: white;
+        }
+
+        .memeclip-widget .component-header {
+            border-bottom-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .memeclip-widget .component-header h5,
+        .memeclip-widget .component-header i {
+            color: white;
+        }
+
+        .image-upload-zone {
+            border: 2px dashed rgba(255, 255, 255, 0.5);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .image-upload-zone:hover {
+            border-color: white;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Dataset Management Styles */
+        .dataset-management {
+            max-height: 100%;
+            overflow-y: auto;
+        }
+
+        .dataset-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .dataset-item {
+            padding: 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .dataset-item:hover {
+            background: #f8f9fa;
+            border-color: #667eea;
+        }
+
+        .dataset-item.active {
+            background: #e3f2fd;
+            border-color: #2196f3;
+        }
+
+        /* Results Display Styles */
+        .results-display {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .results-tabs {
+            margin-bottom: 15px;
+        }
+
+        .results-content {
+            flex: 1;
+            overflow-y: auto;
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1200px) {
+            .ai-reports-container {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto auto auto;
+            }
+
+            .top-row {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+
+            .middle-row {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+        }
+
+        /* Animation Classes */
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: var(--border-radius);
+            z-index: 1000;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #5a6fd8;
+        }
+
+        /* Bottom Popup Window Styles */
+        .bottom-popup {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 33.33vh; /* Lower third of viewport */
+            background: var(--card-bg);
+            border-top-left-radius: var(--border-radius);
+            border-top-right-radius: var(--border-radius);
+            box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            z-index: 2000;
+            transform: translateY(100%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .bottom-popup.show {
+            transform: translateY(0);
+        }
+
+        .bottom-popup-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px 20px;
+            border-bottom: 2px solid #e0e0e0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-top-left-radius: var(--border-radius);
+            border-top-right-radius: var(--border-radius);
+            flex-shrink: 0;
+        }
+
+        .bottom-popup-header h5 {
+            margin: 0;
+            font-weight: 600;
+        }
+
+        .bottom-popup-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: background-color 0.2s ease;
+        }
+
+        .bottom-popup-close:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .bottom-popup-content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: white;
+        }
+
+        .bottom-popup-resize-handle {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5px;
+            cursor: ns-resize;
+            background: transparent;
+        }
+
+        .bottom-popup-resize-handle:hover {
+            background: rgba(102, 126, 234, 0.3);
+        }
+
+        /* Main content adjustment when popup is open */
+        .main-content {
+            transition: padding-bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .main-content.popup-open {
+            padding-bottom: 33.33vh;
+        }
+
+        /* Responsive popup */
+        @media (max-width: 768px) {
+            .bottom-popup {
+                height: 50vh; /* Half screen on mobile */
+            }
+            
+            .main-content.popup-open {
+                padding-bottom: 50vh;
+            }
+        }
+
+        /* Popup content specific styles */
+        .popup-tabs {
+            margin-bottom: 15px;
+        }
+
+        .popup-tab-content {
+            height: calc(33.33vh - 120px); /* Adjust for header and tabs */
+            overflow-y: auto;
+        }
+
+        @media (max-width: 768px) {
+            .popup-tab-content {
+                height: calc(50vh - 120px);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-content" id="mainContent">
+        <div class="ai-reports-container">
+        <!-- Header Section -->
+        <div class="header-section">
+            <h1><i class="fas fa-brain"></i> AI Reports - Advanced Analytics Platform</h1>
+            <p class="lead">AWS Athena-like Query Engine with MemeCLIP Integration</p>
+        </div>
+
+        <!-- Top Row -->
+        <div class="top-row">
+            <!-- Dataset Generator -->
+            <div class="component-card dataset-generator">
+                <div class="component-header">
+                    <i class="fas fa-database"></i>
+                    <h5>Dataset Generator</h5>
+                </div>
+                <div class="dataset-generator-content">
+                    <div class="mb-3">
+                        <label class="form-label">Dataset Name</label>
+                        <input type="text" class="form-control" id="datasetName" placeholder="e.g., tor_analysis_2024">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Partition Strategy</label>
+                        <select class="form-select" id="partitionStrategy">
+                            <option value="by_domain">By Domain</option>
+                            <option value="by_date">By Date</option>
+                            <option value="by_network">By Network Type</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" id="datasetDescription" rows="2" placeholder="Dataset description..."></textarea>
+                    </div>
+                    <button class="btn btn-light w-100" onclick="createDataset()">
+                        <i class="fas fa-plus"></i> Create Dataset
+                    </button>
+                </div>
+            </div>
+
+            <!-- Query Engine -->
+            <div class="component-card query-engine">
+                <div class="component-header">
+                    <i class="fas fa-search"></i>
+                    <h5>AWS Athena-like Query Engine</h5>
+                </div>
+                <div class="query-engine-content">
+                    <div class="sql-editor-container">
+                        <textarea id="sqlEditor" class="form-control sql-editor" placeholder="-- Enter your SQL query here
+SELECT domain, COUNT(*) as page_count 
+FROM dataset_1 
+WHERE network_type = 'tor' 
+GROUP BY domain 
+ORDER BY page_count DESC 
+LIMIT 50;"></textarea>
+                    </div>
+                    <div class="query-controls">
+                        <button class="btn btn-primary" onclick="executeQuery()">
+                            <i class="fas fa-play"></i> Execute Query
+                        </button>
+                        <button class="btn btn-secondary" onclick="formatQuery()">
+                            <i class="fas fa-code"></i> Format
+                        </button>
+                        <button class="btn btn-info" onclick="showQueryHistory()">
+                            <i class="fas fa-history"></i> History
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MemeCLIP Widget -->
+            <div class="component-card memeclip-widget">
+                <div class="component-header">
+                    <i class="fas fa-images"></i>
+                    <h5>MemeCLIP Analysis</h5>
+                </div>
+                <div class="memeclip-content">
+                    <div class="image-upload-zone" onclick="document.getElementById('imageUpload').click()">
+                        <i class="fas fa-cloud-upload-alt fa-2x mb-2"></i>
+                        <p>Click to upload image for analysis</p>
+                        <small>Supports: JPG, PNG, WebP, GIF</small>
+                    </div>
+                    <input type="file" id="imageUpload" accept="image/*" style="display: none;" onchange="analyzeImage(this)">
+                    <div class="mt-3">
+                        <button class="btn btn-light btn-sm w-100" onclick="batchAnalyzeImages()">
+                            <i class="fas fa-layer-group"></i> Batch Analysis
+                        </button>
+                    </div>
+                    <div id="memeclipResults" class="mt-3" style="display: none;">
+                        <!-- MemeCLIP results will appear here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Middle Row -->
+        <div class="middle-row">
+            <!-- Dataset Management -->
+            <div class="component-card dataset-management">
+                <div class="component-header">
+                    <i class="fas fa-folder-open"></i>
+                    <h5>Dataset Management</h5>
+                </div>
+                <div class="dataset-management-content">
+                    <div class="mb-3">
+                        <button class="btn btn-primary btn-sm me-2" onclick="refreshDatasets()">
+                            <i class="fas fa-sync"></i> Refresh
+                        </button>
+                        <button class="btn btn-success btn-sm me-2" onclick="exportToHive()">
+                            <i class="fas fa-download"></i> Export HIVE
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteDataset()">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
+                    <div class="dataset-list" id="datasetList">
+                        <!-- Datasets will be loaded here -->
+                        <div class="text-center text-muted">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <p>Loading datasets...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Display -->
+            <div class="component-card results-display">
+                <div class="component-header">
+                    <i class="fas fa-chart-bar"></i>
+                    <h5>Results & Reports</h5>
+                </div>
+                <div class="results-display-content">
+                    <!-- Navigation Tabs -->
+                    <ul class="nav nav-tabs results-tabs" id="resultsTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="data-tab" data-bs-toggle="tab" data-bs-target="#data-panel" type="button" role="tab">
+                                <i class="fas fa-table"></i> Data
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="reports-tab" data-bs-toggle="tab" data-bs-target="#reports-panel" type="button" role="tab">
+                                <i class="fas fa-file-alt"></i> AI Reports
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="screenshots-tab" data-bs-toggle="tab" data-bs-target="#screenshots-panel" type="button" role="tab">
+                                <i class="fas fa-camera"></i> Screenshots
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="memeclip-tab" data-bs-toggle="tab" data-bs-target="#memeclip-panel" type="button" role="tab">
+                                <i class="fas fa-brain"></i> MemeCLIP
+                            </button>
+                        </li>
+                    </ul>
+
+                    <!-- Tab Content -->
+                    <div class="tab-content results-content" id="resultsTabContent">
+                        <!-- Data Panel -->
+                        <div class="tab-pane fade show active" id="data-panel" role="tabpanel">
+                            <div id="queryResults">
+                                <div class="text-center text-muted">
+                                    <i class="fas fa-database fa-3x mb-3"></i>
+                                    <h5>Execute a query to see results</h5>
+                                    <p>Use the SQL editor above to query your datasets</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- AI Reports Panel -->
+                        <div class="tab-pane fade" id="reports-panel" role="tabpanel">
+                            <div id="aiReports">
+                                <div class="mb-3">
+                                    <button class="btn btn-primary me-2" onclick="generateSummaryReport()">
+                                        <i class="fas fa-chart-line"></i> Summary Report
+                                    </button>
+                                    <button class="btn btn-warning me-2" onclick="generateSecurityReport()">
+                                        <i class="fas fa-shield-alt"></i> Security Report
+                                    </button>
+                                    <button class="btn btn-info" onclick="generateCustomReport()">
+                                        <i class="fas fa-cog"></i> Custom Report
+                                    </button>
+                                </div>
+                                <div id="reportContent">
+                                    <div class="text-center text-muted">
+                                        <i class="fas fa-file-alt fa-3x mb-3"></i>
+                                        <h5>Generate AI-powered reports</h5>
+                                        <p>Click a button above to generate comprehensive reports</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Screenshots Panel -->
+                        <div class="tab-pane fade" id="screenshots-panel" role="tabpanel">
+                            <div id="screenshotsGallery">
+                                <div class="mb-3">
+                                    <button class="btn btn-primary me-2" onclick="captureScreenshots()">
+                                        <i class="fas fa-camera"></i> Capture Screenshots
+                                    </button>
+                                    <button class="btn btn-secondary" onclick="refreshScreenshots()">
+                                        <i class="fas fa-sync"></i> Refresh Gallery
+                                    </button>
+                                </div>
+                                <div id="screenshotGrid" class="row">
+                                    <div class="text-center text-muted">
+                                        <i class="fas fa-camera fa-3x mb-3"></i>
+                                        <h5>Website Screenshots</h5>
+                                        <p>Capture and view website screenshots</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- MemeCLIP Panel -->
+                        <div class="tab-pane fade" id="memeclip-panel" role="tabpanel">
+                            <div id="memeclipAnalysis">
+                                <div class="mb-3">
+                                    <button class="btn btn-primary me-2" onclick="searchSimilarImages()">
+                                        <i class="fas fa-search"></i> Search Similar
+                                    </button>
+                                    <button class="btn btn-info me-2" onclick="viewAnalysisResults()">
+                                        <i class="fas fa-chart-pie"></i> View Results
+                                    </button>
+                                    <button class="btn btn-success" onclick="exportMemeclipData()">
+                                        <i class="fas fa-download"></i> Export Data
+                                    </button>
+                                </div>
+                                <div id="memeclipContent">
+                                    <div class="text-center text-muted">
+                                        <i class="fas fa-brain fa-3x mb-3"></i>
+                                        <h5>MemeCLIP Analysis Results</h5>
+                                        <p>Upload images or run batch analysis to see results</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Modal -->
+    <div class="modal fade" id="loadingModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-body text-center">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <h5 id="loadingText">Processing...</h5>
+                    <p id="loadingSubtext">Please wait while we process your request.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/sql/sql.min.js"></script>
+    <script src="/static/ai_reports/js/ai_reports_advanced.js"></script>
+    <script src="/static/ai_reports/js/memeclip_integration.js"></script>
+    
+    <script>
+        // Initialize MemeCLIP integration when AI Reports is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            // Wait for AI Reports to initialize
+            setTimeout(() => {
+                if (window.aiReports) {
+                    window.aiReports.memeclip = new MemeCLIPIntegration(window.aiReports);
+                }
+            }, 1000);
+        });
+
+        // Additional global functions for screenshot and report functionality
+        function captureScreenshots() {
+            if (!window.aiReports.currentDataset) {
+                window.aiReports.showError('Please select a dataset first');
+                return;
+            }
+
+            window.aiReports.showLoading('Capturing Screenshots...', 'Taking screenshots of websites in dataset...');
+            
+            fetch('/api/ai-reports/screenshots/batch', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    dataset_id: window.aiReports.currentDataset.id,
+                    limit: 20
+                })
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    refreshScreenshots();
+                    window.aiReports.showSuccess(`Screenshots captured for ${result.captured_count || 0} sites!`);
+                } else {
+                    window.aiReports.showError(result.error || 'Screenshot capture failed');
+                }
+            })
+            .catch(error => {
+                console.error('Error capturing screenshots:', error);
+                window.aiReports.showError('Error capturing screenshots: ' + error.message);
+            })
+            .finally(() => {
+                window.aiReports.hideLoading();
+            });
+        }
+
+        function refreshScreenshots() {
+            const datasetId = window.aiReports.currentDataset?.id;
+            if (!datasetId) return;
+
+            fetch(`/api/ai-reports/screenshots/dataset/${datasetId}`)
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        displayScreenshots(result.screenshots);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading screenshots:', error);
+                });
+        }
+
+        function displayScreenshots(screenshots) {
+            // Show screenshots in the bottom popup
+            if (window.aiReports) {
+                window.aiReports.showBottomPopup('Website Screenshots', 'popup-screenshots-tab');
+            }
+            
+            const grid = document.getElementById('popupScreenshotGrid');
+            if (!grid) return;
+
+            if (!screenshots || screenshots.length === 0) {
+                grid.innerHTML = `
+                    <div class="col-12 text-center text-muted">
+                        <i class="fas fa-camera fa-3x mb-3"></i>
+                        <h5>No Screenshots Available</h5>
+                        <p>Capture screenshots to see them here</p>
+                    </div>
+                `;
+                return;
+            }
+
+            grid.innerHTML = screenshots.map(screenshot => `
+                <div class="col-md-4 col-lg-3 mb-3">
+                    <div class="card">
+                        <img src="${screenshot.thumbnail_url || screenshot.screenshot_url}" 
+                             class="card-img-top" 
+                             alt="Screenshot" 
+                             style="height: 200px; object-fit: cover; cursor: pointer;"
+                             onclick="viewScreenshot('${screenshot.screenshot_url}', '${screenshot.site_url}')">
+                        <div class="card-body p-2">
+                            <h6 class="card-title small">${screenshot.site_url.length > 30 ? screenshot.site_url.substring(0, 30) + '...' : screenshot.site_url}</h6>
+                            <small class="text-muted">${new Date(screenshot.capture_timestamp).toLocaleDateString()}</small>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function viewScreenshot(url, siteUrl) {
+            // Create modal to view full screenshot
+            const modal = document.createElement('div');
+            modal.className = 'modal fade';
+            modal.innerHTML = `
+                <div class="modal-dialog modal-xl">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Screenshot: ${siteUrl}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body text-center">
+                            <img src="${url}" class="img-fluid" alt="Full Screenshot">
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            const bsModal = new bootstrap.Modal(modal);
+            bsModal.show();
+            
+            modal.addEventListener('hidden.bs.modal', () => {
+                modal.remove();
+            });
+        }
+
+        function generateSummaryReport() {
+            if (!window.aiReports.currentDataset) {
+                window.aiReports.showError('Please select a dataset first');
+                return;
+            }
+
+            window.aiReports.showLoading('Generating Report...', 'Creating AI-powered summary report...');
+            
+            fetch('/api/ai-reports/reports/summary/' + window.aiReports.currentDataset.id, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    displayReport(result.report, 'Summary Report');
+                    window.aiReports.showSuccess('Summary report generated successfully!');
+                } else {
+                    window.aiReports.showError(result.error || 'Report generation failed');
+                }
+            })
+            .catch(error => {
+                console.error('Error generating report:', error);
+                window.aiReports.showError('Error generating report: ' + error.message);
+            })
+            .finally(() => {
+                window.aiReports.hideLoading();
+            });
+        }
+
+        function generateSecurityReport() {
+            if (!window.aiReports.currentDataset) {
+                window.aiReports.showError('Please select a dataset first');
+                return;
+            }
+
+            window.aiReports.showLoading('Generating Security Report...', 'Analyzing security aspects of crawled data...');
+            
+            fetch('/api/ai-reports/reports/security/' + window.aiReports.currentDataset.id, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    displayReport(result.report, 'Security Report');
+                    window.aiReports.showSuccess('Security report generated successfully!');
+                } else {
+                    window.aiReports.showError(result.error || 'Security report generation failed');
+                }
+            })
+            .catch(error => {
+                console.error('Error generating security report:', error);
+                window.aiReports.showError('Error generating security report: ' + error.message);
+            })
+            .finally(() => {
+                window.aiReports.hideLoading();
+            });
+        }
+
+        function generateCustomReport() {
+            // Show custom report configuration modal
+            const modal = document.createElement('div');
+            modal.className = 'modal fade';
+            modal.innerHTML = `
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Custom Report Configuration</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label">Report Type</label>
+                                <select class="form-select" id="customReportType">
+                                    <option value="comprehensive">Comprehensive Analysis</option>
+                                    <option value="network_focus">Network-Focused</option>
+                                    <option value="content_analysis">Content Analysis</option>
+                                    <option value="media_focus">Media-Focused</option>
+                                    <option value="security_deep">Deep Security Analysis</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Output Format</label>
+                                <select class="form-select" id="customReportFormat">
+                                    <option value="html">HTML</option>
+                                    <option value="markdown">Markdown</option>
+                                    <option value="json">JSON</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Additional Instructions</label>
+                                <textarea class="form-control" id="customReportInstructions" rows="3" 
+                                          placeholder="Any specific requirements or focus areas..."></textarea>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" onclick="executeCustomReport()">Generate Report</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            const bsModal = new bootstrap.Modal(modal);
+            bsModal.show();
+            
+            modal.addEventListener('hidden.bs.modal', () => {
+                modal.remove();
+            });
+        }
+
+        function executeCustomReport() {
+            const reportType = document.getElementById('customReportType').value;
+            const format = document.getElementById('customReportFormat').value;
+            const instructions = document.getElementById('customReportInstructions').value;
+
+            if (!window.aiReports.currentDataset) {
+                window.aiReports.showError('Please select a dataset first');
+                return;
+            }
+
+            // Close the modal
+            const modal = document.querySelector('.modal.show');
+            if (modal) {
+                bootstrap.Modal.getInstance(modal).hide();
+            }
+
+            window.aiReports.showLoading('Generating Custom Report...', 'Creating personalized analysis...');
+            
+            fetch('/api/ai-reports/reports/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    dataset_id: window.aiReports.currentDataset.id,
+                    report_type: reportType,
+                    format: format,
+                    instructions: instructions
+                })
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    displayReport(result.report, 'Custom Report');
+                    window.aiReports.showSuccess('Custom report generated successfully!');
+                } else {
+                    window.aiReports.showError(result.error || 'Custom report generation failed');
+                }
+            })
+            .catch(error => {
+                console.error('Error generating custom report:', error);
+                window.aiReports.showError('Error generating custom report: ' + error.message);
+            })
+            .finally(() => {
+                window.aiReports.hideLoading();
+            });
+        }
+
+        function displayReport(report, title) {
+            // Show report in the bottom popup
+            if (window.aiReports) {
+                window.aiReports.showBottomPopup('AI Generated Report', 'popup-reports-tab');
+            }
+            
+            const reportContent = document.getElementById('popupReportContent');
+            if (!reportContent) return;
+
+            reportContent.innerHTML = `
+                <div class="report-display">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5><i class="fas fa-file-alt"></i> ${title}</h5>
+                        <div>
+                            <button class="btn btn-sm btn-outline-primary me-2" onclick="downloadReport('${title}')">
+                                <i class="fas fa-download"></i> Download
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="shareReport()">
+                                <i class="fas fa-share"></i> Share
+                            </button>
+                        </div>
+                    </div>
+                    <div class="report-content">
+                        ${typeof report === 'string' ? window.aiReports.renderMarkdown(report) : JSON.stringify(report, null, 2)}
+                    </div>
+                </div>
+            `;
+        }
+
+        function downloadReport(title) {
+            const reportContent = document.querySelector('.report-content');
+            if (!reportContent) return;
+
+            const content = reportContent.innerHTML;
+            const blob = new Blob([content], { type: 'text/html' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${title.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.html`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+
+        function shareReport() {
+            if (navigator.share) {
+                navigator.share({
+                    title: 'AI Reports Analysis',
+                    text: 'Check out this AI-generated report from Noctipede',
+                    url: window.location.href
+                });
+            } else {
+                // Fallback: copy URL to clipboard
+                navigator.clipboard.writeText(window.location.href).then(() => {
+                    window.aiReports.showSuccess('Report URL copied to clipboard!');
+                });
+            }
+        }
+
+        function exportToHive() {
+            if (!window.aiReports.currentDataset) {
+                window.aiReports.showError('Please select a dataset first');
+                return;
+            }
+
+            window.aiReports.showLoading('Exporting to HIVE...', 'Converting dataset to HIVE format...');
+            
+            fetch(`/api/ai-reports/datasets/${window.aiReports.currentDataset.id}/export-hive`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    window.aiReports.showSuccess('Dataset exported to HIVE format successfully!');
+                    console.log('HIVE export details:', result);
+                } else {
+                    window.aiReports.showError(result.error || 'HIVE export failed');
+                }
+            })
+            .catch(error => {
+                console.error('Error exporting to HIVE:', error);
+                window.aiReports.showError('Error exporting to HIVE: ' + error.message);
+            })
+            .finally(() => {
+                window.aiReports.hideLoading();
+            });
+        }
+
+        function deleteDataset() {
+            if (!window.aiReports.currentDataset) {
+                window.aiReports.showError('Please select a dataset first');
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to delete dataset "${window.aiReports.currentDataset.name}"? This action cannot be undone.`)) {
+                return;
+            }
+
+            window.aiReports.showLoading('Deleting Dataset...', 'Removing dataset and cleaning up storage...');
+            
+            fetch(`/api/ai-reports/datasets/${window.aiReports.currentDataset.id}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    window.aiReports.showSuccess('Dataset deleted successfully!');
+                    window.aiReports.currentDataset = null;
+                    window.aiReports.loadDatasets(); // Refresh the list
+                } else {
+                    window.aiReports.showError(result.error || 'Dataset deletion failed');
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting dataset:', error);
+                window.aiReports.showError('Error deleting dataset: ' + error.message);
+            })
+            .finally(() => {
+                window.aiReports.hideLoading();
+            });
+        }
+    </script>
+
+    <!-- Bottom Popup Window -->
+    <div class="bottom-popup" id="bottomPopup">
+        <div class="bottom-popup-resize-handle" id="resizeHandle"></div>
+        <div class="bottom-popup-header">
+            <h5 id="popupTitle">
+                <i class="fas fa-chart-bar"></i> Results & Analysis
+            </h5>
+            <button class="bottom-popup-close" onclick="closeBottomPopup()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="bottom-popup-content">
+            <!-- Navigation Tabs -->
+            <ul class="nav nav-tabs popup-tabs" id="popupTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="popup-data-tab" data-bs-toggle="tab" data-bs-target="#popup-data-panel" type="button" role="tab">
+                        <i class="fas fa-table"></i> Query Results
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="popup-reports-tab" data-bs-toggle="tab" data-bs-target="#popup-reports-panel" type="button" role="tab">
+                        <i class="fas fa-file-alt"></i> AI Reports
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="popup-screenshots-tab" data-bs-toggle="tab" data-bs-target="#popup-screenshots-panel" type="button" role="tab">
+                        <i class="fas fa-camera"></i> Screenshots
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="popup-memeclip-tab" data-bs-toggle="tab" data-bs-target="#popup-memeclip-panel" type="button" role="tab">
+                        <i class="fas fa-brain"></i> MemeCLIP
+                    </button>
+                </li>
+            </ul>
+
+            <!-- Tab Content -->
+            <div class="tab-content popup-tab-content" id="popupTabContent">
+                <!-- Query Results Panel -->
+                <div class="tab-pane fade show active" id="popup-data-panel" role="tabpanel">
+                    <div id="popupQueryResults">
+                        <div class="text-center text-muted">
+                            <i class="fas fa-database fa-3x mb-3"></i>
+                            <h5>Execute a query to see results</h5>
+                            <p>Use the SQL editor above to query your datasets</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Reports Panel -->
+                <div class="tab-pane fade" id="popup-reports-panel" role="tabpanel">
+                    <div id="popupAiReports">
+                        <div class="mb-3">
+                            <button class="btn btn-primary me-2" onclick="generateSummaryReport()">
+                                <i class="fas fa-chart-line"></i> Summary Report
+                            </button>
+                            <button class="btn btn-warning me-2" onclick="generateSecurityReport()">
+                                <i class="fas fa-shield-alt"></i> Security Report
+                            </button>
+                            <button class="btn btn-info" onclick="generateCustomReport()">
+                                <i class="fas fa-cog"></i> Custom Report
+                            </button>
+                        </div>
+                        <div id="popupReportContent">
+                            <div class="text-center text-muted">
+                                <i class="fas fa-file-alt fa-3x mb-3"></i>
+                                <h5>Generate AI-powered reports</h5>
+                                <p>Click a button above to generate comprehensive reports</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Screenshots Panel -->
+                <div class="tab-pane fade" id="popup-screenshots-panel" role="tabpanel">
+                    <div id="popupScreenshotsGallery">
+                        <div class="mb-3">
+                            <button class="btn btn-primary me-2" onclick="captureScreenshots()">
+                                <i class="fas fa-camera"></i> Capture Screenshots
+                            </button>
+                            <button class="btn btn-secondary" onclick="refreshScreenshots()">
+                                <i class="fas fa-sync"></i> Refresh Gallery
+                            </button>
+                        </div>
+                        <div id="popupScreenshotGrid" class="row">
+                            <div class="text-center text-muted">
+                                <i class="fas fa-camera fa-3x mb-3"></i>
+                                <h5>Website Screenshots</h5>
+                                <p>Capture and view website screenshots</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MemeCLIP Panel -->
+                <div class="tab-pane fade" id="popup-memeclip-panel" role="tabpanel">
+                    <div id="popupMemeclipAnalysis">
+                        <div class="mb-3">
+                            <button class="btn btn-primary me-2" onclick="searchSimilarImages()">
+                                <i class="fas fa-search"></i> Search Similar
+                            </button>
+                            <button class="btn btn-info me-2" onclick="viewAnalysisResults()">
+                                <i class="fas fa-chart-pie"></i> View Results
+                            </button>
+                            <button class="btn btn-success" onclick="exportMemeclipData()">
+                                <i class="fas fa-download"></i> Export Data
+                            </button>
+                        </div>
+                        <div id="popupMemeclipContent">
+                            <div class="text-center text-muted">
+                                <i class="fas fa-brain fa-3x mb-3"></i>
+                                <h5>MemeCLIP Analysis Results</h5>
+                                <p>Upload images or run batch analysis to see results</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

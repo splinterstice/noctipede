@@ -1,0 +1,156 @@
+apiVersion: v1
+items:
+- apiVersion: v1
+  kind: Service
+  metadata:
+    creationTimestamp: "2025-07-04T20:05:38Z"
+    name: mariadb
+    namespace: noctipede
+    ownerReferences:
+    - apiVersion: k8s.mariadb.com/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: MariaDB
+      name: mariadb
+      uid: 8f54a78a-4bba-4c2a-a075-752dcd47ff3a
+    resourceVersion: "2455378"
+    uid: 921492d8-d572-4835-b1d0-daae32ce0d59
+  spec:
+    clusterIP: 10.43.86.214
+    clusterIPs:
+    - 10.43.86.214
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: mariadb
+      port: 3306
+      protocol: TCP
+      targetPort: 3306
+    selector:
+      app.kubernetes.io/instance: mariadb
+      app.kubernetes.io/name: mariadb
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    creationTimestamp: "2025-07-04T20:05:38Z"
+    name: mariadb-internal
+    namespace: noctipede
+    ownerReferences:
+    - apiVersion: k8s.mariadb.com/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: MariaDB
+      name: mariadb
+      uid: 8f54a78a-4bba-4c2a-a075-752dcd47ff3a
+    resourceVersion: "2455373"
+    uid: 52b9e0a5-0eb7-4c1e-8c64-a7753c5a3ac0
+  spec:
+    clusterIP: None
+    clusterIPs:
+    - None
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: mariadb
+      port: 3306
+      protocol: TCP
+      targetPort: 3306
+    publishNotReadyAddresses: true
+    selector:
+      app.kubernetes.io/instance: mariadb
+      app.kubernetes.io/name: mariadb
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app":"minio"},"name":"minio","namespace":"noctipede"},"spec":{"ports":[{"name":"api","port":9000,"targetPort":9000},{"name":"console","port":9001,"targetPort":9001}],"selector":{"app":"minio"},"type":"ClusterIP"}}
+    creationTimestamp: "2025-07-04T20:05:39Z"
+    labels:
+      app: minio
+    name: minio
+    namespace: noctipede
+    resourceVersion: "2455438"
+    uid: 55355a47-d2f0-4efa-828c-31b2e5a4f323
+  spec:
+    clusterIP: 10.43.213.107
+    clusterIPs:
+    - 10.43.213.107
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: api
+      port: 9000
+      protocol: TCP
+      targetPort: 9000
+    - name: console
+      port: 9001
+      protocol: TCP
+      targetPort: 9001
+    selector:
+      app: minio
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app":"minio"},"name":"minio-console","namespace":"noctipede"},"spec":{"ports":[{"name":"console","port":9001,"targetPort":9001}],"selector":{"app":"minio"},"type":"LoadBalancer"}}
+    creationTimestamp: "2025-07-04T20:05:39Z"
+    finalizers:
+    - service.kubernetes.io/load-balancer-cleanup
+    labels:
+      app: minio
+    name: minio-console
+    namespace: noctipede
+    resourceVersion: "2455547"
+    uid: 73ff8558-f773-4f2d-9599-1528853a44c9
+  spec:
+    allocateLoadBalancerNodePorts: true
+    clusterIP: 10.43.32.229
+    clusterIPs:
+    - 10.43.32.229
+    externalTrafficPolicy: Cluster
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: console
+      nodePort: 32505
+      port: 9001
+      protocol: TCP
+      targetPort: 9001
+    selector:
+      app: minio
+    sessionAffinity: None
+    type: LoadBalancer
+  status:
+    loadBalancer:
+      ingress:
+      - ip: 10.1.1.12
+        ipMode: VIP
+      - ip: 10.1.1.13
+        ipMode: VIP
+      - ip: 10.1.1.14
+        ipMode: VIP
+kind: List
+metadata:
+  resourceVersion: ""

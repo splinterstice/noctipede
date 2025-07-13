@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Noctipede Enhanced Metrics Dashboard - Simple</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #ffffff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .dashboard-nav {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .nav-link {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            padding: 10px 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .nav-link.active {
+            background: rgba(76, 175, 80, 0.3);
+            border-color: #4CAF50;
+        }
+
+        .metric-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-bottom: 20px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            opacity: 0.7;
+        }
+
+        .error {
+            background: rgba(244, 67, 54, 0.1);
+            border: 1px solid rgba(244, 67, 54, 0.3);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .last-updated {
+            text-align: center;
+            margin-top: 20px;
+            opacity: 0.7;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🕷️ Noctipede Enhanced Metrics Dashboard</h1>
+        <div class="subtitle">Simple Enhanced Dashboard (Fallback Mode)</div>
+    </div>
+
+    <div class="dashboard-nav">
+        <a href="/basic" class="nav-link">🏠 Basic Dashboard</a>
+        <a href="/enhanced" class="nav-link active">⚡ Enhanced Dashboard</a>
+        <a href="/combined" class="nav-link">🔗 Combined Dashboard</a>
+        <a href="/ai-reports" class="nav-link">🤖 AI Reports</a>
+    </div>
+
+    <div id="metricsContainer">
+        <div class="loading">
+            <h3>Loading enhanced metrics...</h3>
+            <p>Testing enhanced metrics endpoint...</p>
+        </div>
+    </div>
+
+    <div class="last-updated" id="lastUpdated"></div>
+
+    <script>
+        // Simple test to see if enhanced metrics work
+        async function testEnhancedMetrics() {
+            try {
+                console.log('Testing enhanced metrics endpoint...');
+                const response = await fetch('/api/enhanced-metrics');
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Enhanced metrics data:', data);
+                
+                displayMetrics(data);
+                
+            } catch (error) {
+                console.error('Enhanced metrics error:', error);
+                displayError(error);
+            }
+        }
+
+        function displayMetrics(data) {
+            const container = document.getElementById('metricsContainer');
+            
+            let html = '<div class="metric-card">';
+            html += '<h3>✅ Enhanced Metrics Working</h3>';
+            html += '<p>Successfully loaded enhanced metrics data</p>';
+            html += '<pre style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 5px; overflow: auto; max-height: 300px;">';
+            html += JSON.stringify(data, null, 2);
+            html += '</pre>';
+            html += '</div>';
+            
+            container.innerHTML = html;
+            
+            // Update timestamp
+            const lastUpdated = document.getElementById('lastUpdated');
+            lastUpdated.textContent = `Last updated: ${new Date().toLocaleString()}`;
+        }
+
+        function displayError(error) {
+            const container = document.getElementById('metricsContainer');
+            
+            container.innerHTML = `
+                <div class="error">
+                    <h3>❌ Enhanced Metrics Error</h3>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                    <p><strong>Details:</strong> ${error.stack || 'No stack trace available'}</p>
+                    <p>Falling back to basic dashboard...</p>
+                    <button onclick="window.location.href='/'" style="margin-top: 10px; padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        Go to Basic Dashboard
+                    </button>
+                </div>
+            `;
+        }
+
+        // Test on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            testEnhancedMetrics();
+        });
+    </script>
+</body>
+</html>

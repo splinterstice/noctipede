@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Noctipede Enhanced Metrics Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #ffffff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .dashboard-nav {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .nav-link {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            padding: 10px 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .nav-link.active {
+            background: rgba(76, 175, 80, 0.3);
+            border-color: #4CAF50;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .metric-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .card-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-healthy { background-color: #4CAF50; }
+        .status-warning { background-color: #FF9800; }
+        .status-error { background-color: #F44336; }
+        .status-unknown { background-color: #9E9E9E; }
+
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .metric-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            margin-bottom: 5px;
+        }
+
+        .metric-list {
+            list-style: none;
+            margin: 10px 0;
+        }
+
+        .metric-list li {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .metric-list li:last-child {
+            border-bottom: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            opacity: 0.7;
+        }
+
+        .error {
+            background: rgba(244, 67, 54, 0.1);
+            border: 1px solid rgba(244, 67, 54, 0.3);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .last-updated {
+            text-align: center;
+            margin-top: 20px;
+            opacity: 0.7;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🕷️ Noctipede Enhanced Metrics Dashboard</h1>
+        <div class="subtitle">Comprehensive Deep Web Analysis System Monitoring</div>
+    </div>
+
+    <div class="dashboard-nav">
+        <a href="/basic" class="nav-link">🏠 Basic Dashboard</a>
+        <a href="/enhanced" class="nav-link active">⚡ Enhanced Dashboard</a>
+        <a href="/combined" class="nav-link">🔗 Combined Dashboard</a>
+        <a href="/ai-reports" class="nav-link">🤖 AI Reports</a>
+    </div>
+
+    <div id="metricsContainer">
+        <div class="loading">
+            <h3>Loading enhanced metrics...</h3>
+            <p>Collecting comprehensive system data...</p>
+        </div>
+    </div>
+
+    <div class="last-updated" id="lastUpdated"></div>
+
+    <script>
+        let metricsData = {};
+        
+        // Utility functions
+        function formatNumber(num) {
+            return new Intl.NumberFormat().format(num);
+        }
+        
+        function safeToFixed(value, decimals = 1) {
+            const num = parseFloat(value);
+            return isNaN(num) ? '0' : num.toFixed(decimals);
+        }
+        
+        function getStatusClass(status) {
+            switch(status) {
+                case 'healthy': case 'connected': return 'status-healthy';
+                case 'warning': case 'partial': return 'status-warning';
+                case 'error': return 'status-error';
+                default: return 'status-unknown';
+            }
+        }
+        
+        // Create basic crawler card from existing metrics
+        function createCrawlerCard(data) {
+            const crawlerData = data.crawler || {};
+            
+            return `
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="card-title">🕷️ Crawler Status</div>
+                        <div class="status-indicator status-healthy"></div>
+                    </div>
+                    
+                    <div class="metric-label">Total Sites</div>
+                    <div class="metric-value">${formatNumber(crawlerData.total_sites || 0)}</div>
+                    
+                    <div class="metric-label">Total Pages</div>
+                    <div class="metric-value">${formatNumber(crawlerData.total_pages || 0)}</div>
+                    
+                    <ul class="metric-list">
+                        <li><span>Recent Pages (24h)</span><span>${formatNumber(crawlerData.recent_pages || 0)}</span></li>
+                        <li><span>Recent Media (24h)</span><span>${formatNumber(crawlerData.recent_media || 0)}</span></li>
+                        <li><span>Total Media Files</span><span>${formatNumber(crawlerData.total_media || 0)}</span></li>
+                        <li><span>Last Updated</span><span>${data.last_updated ? new Date(data.last_updated).toLocaleString() : 'Never'}</span></li>
+                    </ul>
+                </div>
+            `;
+        }
+        
+        // Create network breakdown card
+        function createNetworkCard(data) {
+            const crawlerData = data.crawler || {};
+            const networkStats = crawlerData.network_stats || [];
+            
+            return `
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="card-title">🌐 Network Distribution</div>
+                        <div class="status-indicator status-healthy"></div>
+                    </div>
+                    
+                    <div class="metric-label">Network Types</div>
+                    <ul class="metric-list">
+                        ${networkStats.map(stat => `
+                            <li>
+                                <span>${stat.network_type || 'Unknown'}</span>
+                                <span>${formatNumber(stat.count || 0)} sites</span>
+                            </li>
+                        `).join('')}
+                        ${networkStats.length === 0 ? '<li><span>No network data</span><span>-</span></li>' : ''}
+                    </ul>
+                </div>
+            `;
+        }
+        
+        // Create top domains card
+        function createTopDomainsCard(data) {
+            const crawlerData = data.crawler || {};
+            const topDomains = crawlerData.top_domains || [];
+            
+            return `
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="card-title">📊 Top Domains</div>
+                        <div class="status-indicator status-healthy"></div>
+                    </div>
+                    
+                    <div class="metric-label">Most Active Domains</div>
+                    <ul class="metric-list">
+                        ${topDomains.map(domain => `
+                            <li>
+                                <span title="${domain.domain}">${domain.domain.length > 25 ? domain.domain.substring(0, 25) + '...' : domain.domain}</span>
+                                <span>${formatNumber(domain.page_count || 0)} pages</span>
+                            </li>
+                        `).join('')}
+                        ${topDomains.length === 0 ? '<li><span>No domain data</span><span>-</span></li>' : ''}
+                    </ul>
+                </div>
+            `;
+        }
+        
+        // Create system status card
+        function createSystemStatusCard(data) {
+            return `
+                <div class="metric-card">
+                    <div class="card-header">
+                        <div class="card-title">⚙️ System Status</div>
+                        <div class="status-indicator status-healthy"></div>
+                    </div>
+                    
+                    <div class="metric-label">Dashboard Mode</div>
+                    <div class="metric-value">Enhanced</div>
+                    
+                    <ul class="metric-list">
+                        <li><span>Data Source</span><span>Basic Metrics API</span></li>
+                        <li><span>Last Updated</span><span>${data.timestamp ? new Date(data.timestamp).toLocaleString() : 'Never'}</span></li>
+                        <li><span>Auto Refresh</span><span>30 seconds</span></li>
+                        <li><span>Status</span><span>✅ Active</span></li>
+                    </ul>
+                    
+                    <div style="margin-top: 15px; padding: 10px; background: rgba(76, 175, 80, 0.1); border-radius: 5px; font-size: 0.9rem;">
+                        <strong>Note:</strong> This is a simplified enhanced dashboard using basic metrics. 
+                        Install <code>psutil</code> and <code>aiohttp</code> for full enhanced features.
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Main function to render all metrics
+        function renderMetrics(data) {
+            const container = document.getElementById('metricsContainer');
+            
+            let html = '<div class="metrics-grid">';
+            
+            // Add cards
+            html += createCrawlerCard(data);
+            html += createNetworkCard(data);
+            html += createTopDomainsCard(data);
+            html += createSystemStatusCard(data);
+            
+            html += '</div>';
+            
+            container.innerHTML = html;
+            
+            // Update last updated time
+            const lastUpdated = document.getElementById('lastUpdated');
+            lastUpdated.textContent = `Last updated: ${new Date().toLocaleString()}`;
+        }
+        
+        // Fetch and display metrics
+        async function fetchMetrics() {
+            try {
+                // Try enhanced metrics first, fallback to basic
+                let response = await fetch('/api/enhanced-metrics');
+                let data;
+                
+                if (response.ok) {
+                    data = await response.json();
+                    console.log('Using enhanced metrics:', data);
+                } else {
+                    // Fallback to basic metrics
+                    response = await fetch('/api/metrics');
+                    data = await response.json();
+                    console.log('Using basic metrics fallback:', data);
+                }
+                
+                metricsData = data;
+                renderMetrics(data);
+                
+            } catch (error) {
+                console.error('Error fetching metrics:', error);
+                document.getElementById('metricsContainer').innerHTML = `
+                    <div class="error">
+                        <h3>❌ Error Loading Metrics</h3>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                        <p>Unable to load enhanced or basic metrics. Please check the server status.</p>
+                        <button onclick="fetchMetrics()" style="margin-top: 10px; padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                            Retry
+                        </button>
+                    </div>
+                `;
+            }
+        }
+        
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            fetchMetrics();
+            
+            // Auto-refresh every 30 seconds
+            setInterval(fetchMetrics, 30000);
+        });
+    </script>
+</body>
+</html>

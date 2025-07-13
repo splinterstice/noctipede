@@ -1,0 +1,89 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fix-title-length
+  namespace: noctipede
+spec:
+  template:
+    spec:
+      initContainers:
+      - name: wait-for-database
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for MariaDB to be ready..."
+          until nc -z mariadb.mariadb-service 3306; do
+            echo "⏳ MariaDB not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ MariaDB is ready!"
+      containers:
+      - name: fix-title-db
+        image: ghcr.io/splinterstice/noctipede:latest
+        command: ["sh", "-c"]
+        args:
+        - |
+          echo "🗄️ Fixing database title column length..."
+          echo "📍 Target: mariadb.mariadb-service:3306"
+          
+          python -c "
+          import pymysql
+          import os
+          
+          connection = pymysql.connect(
+              host=os.getenv('MARIADB_HOST', 'mariadb.mariadb-service'),
+              port=int(os.getenv('MARIADB_PORT', '3306')),
+              user=os.getenv('MARIADB_USER', 'splinter-research'),
+              password=os.getenv('MARIADB_PASSWORD'),
+              database=os.getenv('MARIADB_DATABASE', 'splinter-research'),
+              charset='utf8mb4'
+          )
+          
+          try:
+              with connection.cursor() as cursor:
+                  print('📊 Current title column info:')
+                  cursor.execute('DESCRIBE pages title')
+                  current = cursor.fetchone()
+                  print(f'  {current}')
+                  
+                  print('🔧 Increasing title column to VARCHAR(2000)...')
+                  cursor.execute('ALTER TABLE pages MODIFY COLUMN title VARCHAR(2000)')
+                  
+                  print('📈 Adding index on title prefix for performance...')
+                  try:
+                      cursor.execute('CREATE INDEX idx_page_title_prefix ON pages (title(255))')
+                      print('✅ Index created')
+                  except Exception as e:
+                      if 'Duplicate key name' in str(e):
+                          print('ℹ️ Index already exists')
+                      else:
+                          print(f'⚠️ Index creation failed: {e}')
+                  
+                  connection.commit()
+                  
+                  print('📊 Updated title column info:')
+                  cursor.execute('DESCRIBE pages title')
+                  updated = cursor.fetchone()
+                  print(f'  {updated}')
+                  
+                  print('✅ Title column fix completed successfully!')
+                  
+          except Exception as e:
+              print(f'❌ Fix failed: {e}')
+              raise
+          finally:
+              connection.close()
+          "
+        envFrom:
+        - configMapRef:
+            name: noctipede-config
+        - secretRef:
+            name: noctipede-secrets
+        env:
+        - name: MARIADB_HOST
+          value: "mariadb.mariadb-service"
+        - name: MARIADB_PORT
+          value: "3306"
+      restartPolicy: OnFailure
+  backoffLimit: 3

@@ -1,0 +1,117 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tor-proxy
+  namespace: noctipede
+  labels:
+    app: tor-proxy
+    component: proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tor-proxy
+  template:
+    metadata:
+      labels:
+        app: tor-proxy
+        component: proxy
+    spec:
+      securityContext:
+        fsGroup: 100  # tor group
+      initContainers:
+      - name: fix-permissions
+        image: busybox:1.35
+        command: ['sh', '-c', 'chown -R 100:100 /var/lib/tor && chmod -R 755 /var/lib/tor']
+        securityContext:
+          runAsUser: 0  # Run as root to fix permissions
+        volumeMounts:
+        - name: tor-data
+          mountPath: /var/lib/tor
+      containers:
+      - name: tor-proxy
+        image: peterdavehello/tor-socks-proxy:latest
+        ports:
+        - containerPort: 9150
+          name: socks-proxy
+          protocol: TCP
+        env:
+        - name: torsocks_port
+          value: "9150"
+        securityContext:
+          runAsUser: 100  # tor user
+          runAsGroup: 100 # tor group
+          allowPrivilegeEscalation: false
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        startupProbe:
+          tcpSocket:
+            port: 9150
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 12  # 2 minutes total
+        livenessProbe:
+          tcpSocket:
+            port: 9150
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          tcpSocket:
+            port: 9150
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: tor-data
+          mountPath: /var/lib/tor
+      volumes:
+      - name: tor-data
+        persistentVolumeClaim:
+          claimName: tor-data-pvc
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tor-proxy
+  namespace: noctipede
+  labels:
+    app: tor-proxy
+    component: proxy
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9150
+    targetPort: 9150
+    protocol: TCP
+    name: socks-proxy
+  selector:
+    app: tor-proxy
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tor-data-pvc
+  namespace: noctipede
+  labels:
+    app: tor-proxy
+    component: proxy
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: longhorn

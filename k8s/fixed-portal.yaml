@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noctipede-portal
+  namespace: noctipede
+  labels:
+    app: noctipede-portal
+    component: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noctipede-portal
+      component: web
+  template:
+    metadata:
+      labels:
+        app: noctipede-portal
+        component: web
+    spec:
+      initContainers:
+      # Wait for database to be ready
+      - name: wait-for-database
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for MariaDB to be ready..."
+          until nc -z mariadb 3306; do
+            echo "⏳ MariaDB not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ MariaDB is ready!"
+      
+      containers:
+      - name: noctipede-portal
+        image: ghcr.io/splinterstice/noctipede:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        command: ["sh", "-c"]
+        args:
+        - |
+          echo "🌐 Starting Noctipede Portal..."
+          cd /app
+          mkdir -p /tmp/output /tmp/logs
+          export OUTPUT_DIR=/tmp/output
+          # Add database connection timeout settings
+          export DB_CONNECT_TIMEOUT=30
+          export DB_READ_TIMEOUT=30
+          PYTHONPATH=/app python -m portal.enhanced_portal
+        envFrom:
+        - configMapRef:
+            name: noctipede-config
+        - secretRef:
+            name: noctipede-secrets
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        # Fixed health checks with longer timeouts
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 60  # Give more time for startup
+          periodSeconds: 30
+          timeoutSeconds: 30       # Increased timeout
+          failureThreshold: 5      # Allow more failures before restart
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 30  # Give more time for startup
+          periodSeconds: 15
+          timeoutSeconds: 15       # Increased timeout
+          failureThreshold: 3

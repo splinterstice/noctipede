@@ -1,0 +1,1166 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-reports-js-files
+  namespace: noctipede
+  labels:
+    app: noctipede
+    component: ai-reports
+data:
+  ai_reports_advanced.js: |
+    /**
+     * Advanced AI Reports JavaScript
+     * Implements AWS Athena-like functionality with MemeCLIP integration
+     */
+    
+    class AdvancedAIReports {
+        constructor() {
+            this.currentDataset = null;
+            this.sqlEditor = null;
+            this.loadingModal = null;
+            this.datasets = [];
+            this.queryHistory = [];
+            this.init();
+        }
+    
+        init() {
+            this.setupSQLEditor();
+            this.setupEventListeners();
+            this.loadDatasets();
+            this.setupModals();
+            console.log('Advanced AI Reports initialized');
+        }
+    
+        setupSQLEditor() {
+            // Initialize CodeMirror for SQL editing
+            const textarea = document.getElementById('sqlEditor');
+            if (textarea && typeof CodeMirror !== 'undefined') {
+                this.sqlEditor = CodeMirror.fromTextArea(textarea, {
+                    mode: 'text/x-sql',
+                    theme: 'monokai',
+                    lineNumbers: true,
+                    autoCloseBrackets: true,
+                    matchBrackets: true,
+                    indentWithTabs: true,
+                    smartIndent: true,
+                    lineWrapping: true,
+                    foldGutter: true,
+                    gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"]
+                });
+                
+                this.sqlEditor.setSize("100%", "200px");
+                console.log('SQL Editor initialized');
+            }
+        }
+    
+        setupEventListeners() {
+            // Dataset management events
+            document.addEventListener('click', (e) => {
+                if (e.target.classList.contains('dataset-item')) {
+                    this.selectDataset(e.target);
+                }
+            });
+    
+            // Image upload for MemeCLIP
+            const imageUpload = document.getElementById('imageUpload');
+            if (imageUpload) {
+                imageUpload.addEventListener('change', (e) => {
+                    this.analyzeImage(e.target);
+                });
+            }
+        }
+    
+        setupModals() {
+            this.loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+        }
+    
+        showLoading(text = 'Processing...', subtext = 'Please wait while we process your request.') {
+            document.getElementById('loadingText').textContent = text;
+            document.getElementById('loadingSubtext').textContent = subtext;
+            this.loadingModal.show();
+        }
+    
+        hideLoading() {
+            this.loadingModal.hide();
+        }
+    
+        async loadDatasets() {
+            try {
+                const response = await fetch('/api/ai-reports/datasets');
+                if (response.ok) {
+                    this.datasets = await response.json();
+                    this.renderDatasets();
+                } else {
+                    console.error('Failed to load datasets');
+                    this.showError('Failed to load datasets');
+                }
+            } catch (error) {
+                console.error('Error loading datasets:', error);
+                this.showError('Error loading datasets: ' + error.message);
+            }
+        }
+    
+        renderDatasets() {
+            const container = document.getElementById('datasetList');
+            if (!container) return;
+    
+            if (this.datasets.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-muted">
+                        <i class="fas fa-database fa-2x mb-2"></i>
+                        <p>No datasets found</p>
+                        <small>Create a dataset to get started</small>
+                    </div>
+                `;
+                return;
+            }
+    
+            container.innerHTML = this.datasets.map(dataset => `
+                <div class="dataset-item" data-id="${dataset.id}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="mb-1">${dataset.name}</h6>
+                            <small class="text-muted">${dataset.description || 'No description'}</small>
+                        </div>
+                        <span class="badge bg-primary">${dataset.record_count || 0}</span>
+                    </div>
+                    <div class="mt-2">
+                        <small class="text-muted">
+                            <i class="fas fa-calendar"></i> ${new Date(dataset.created_at).toLocaleDateString()}
+                            <span class="ms-2">
+                                <i class="fas fa-hdd"></i> ${this.formatBytes(dataset.size_bytes || 0)}
+                            </span>
+                        </small>
+                    </div>
+                </div>
+            `).join('');
+        }
+    
+        selectDataset(element) {
+            // Remove active class from all items
+            document.querySelectorAll('.dataset-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            // Add active class to selected item
+            element.classList.add('active');
+            
+            // Set current dataset
+            const datasetId = element.getAttribute('data-id');
+            this.currentDataset = this.datasets.find(d => d.id == datasetId);
+            
+            console.log('Selected dataset:', this.currentDataset);
+        }
+    
+        async createDataset() {
+            const name = document.getElementById('datasetName').value.trim();
+            const description = document.getElementById('datasetDescription').value.trim();
+            const partitionStrategy = document.getElementById('partitionStrategy').value;
+    
+            if (!name) {
+                this.showError('Dataset name is required');
+                return;
+            }
+    
+            try {
+                this.showLoading('Creating Dataset...', 'Setting up partitions and schema...');
+                
+                const response = await fetch('/api/ai-reports/datasets', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        name: name,
+                        description: description,
+                        partition_strategy: partitionStrategy
+                    })
+                });
+    
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    this.showSuccess('Dataset created successfully!');
+                    this.loadDatasets(); // Refresh the list
+                    
+                    // Clear form
+                    document.getElementById('datasetName').value = '';
+                    document.getElementById('datasetDescription').value = '';
+                } else {
+                    this.showError(result.error || 'Failed to create dataset');
+                }
+            } catch (error) {
+                console.error('Error creating dataset:', error);
+                this.showError('Error creating dataset: ' + error.message);
+            } finally {
+                this.hideLoading();
+            }
+        }
+    
+        async executeQuery() {
+            if (!this.sqlEditor) {
+                this.showError('SQL Editor not initialized');
+                return;
+            }
+    
+            const query = this.sqlEditor.getValue().trim();
+            if (!query) {
+                this.showError('Please enter a SQL query');
+                return;
+            }
+    
+            try {
+                this.showLoading('Executing Query...', 'Running SQL against your datasets...');
+                
+                const response = await fetch('/api/ai-reports/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        dataset_id: this.currentDataset?.id,
+                        context: 'SQL Query from Advanced AI Reports'
+                    })
+                });
+    
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    this.displayQueryResults(result);
+                    this.addToQueryHistory(query, result);
+                    
+                    // Switch to data tab
+                    const dataTab = document.getElementById('data-tab');
+                    if (dataTab) {
+                        dataTab.click();
+                    }
+                } else {
+                    this.showError(result.error || 'Query execution failed');
+                }
+            } catch (error) {
+                console.error('Error executing query:', error);
+                this.showError('Error executing query: ' + error.message);
+            } finally {
+                this.hideLoading();
+            }
+        }
+    
+        displayQueryResults(result) {
+            const container = document.getElementById('queryResults');
+            if (!container) return;
+    
+            let html = '';
+    
+            // Show AI response if available
+            if (result.response) {
+                html += `
+                    <div class="alert alert-info">
+                        <h6><i class="fas fa-robot"></i> AI Analysis</h6>
+                        <div class="markdown-content">
+                            ${this.renderMarkdown(result.response)}
+                        </div>
+                    </div>
+                `;
+            }
+    
+            // Show structured data
+            if (result.data) {
+                html += this.renderStructuredData(result.data);
+            }
+    
+            // Show raw query results if available
+            if (result.query_results) {
+                html += this.renderQueryTable(result.query_results);
+            }
+    
+            container.innerHTML = html;
+        }
+    
+        renderQueryTable(data) {
+            if (!data || !Array.isArray(data) || data.length === 0) {
+                return '<div class="alert alert-warning">No data returned from query</div>';
+            }
+    
+            const columns = Object.keys(data[0]);
+            
+            return `
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                ${columns.map(col => `<th>${col}</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.map(row => `
+                                <tr>
+                                    ${columns.map(col => `<td>${this.escapeHtml(String(row[col] || ''))}</td>`).join('')}
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+    
+        renderStructuredData(data) {
+            let html = '<div class="structured-data-section">';
+    
+            // Render statistics cards
+            if (data.stats) {
+                html += this.renderStatsCards(data.stats);
+            }
+    
+            // Render network distribution
+            if (data.networks) {
+                html += this.renderNetworkChart(data.networks);
+            }
+    
+            // Render recent sites table
+            if (data.recent_sites && data.recent_sites.length > 0) {
+                html += this.renderRecentSitesTable(data.recent_sites);
+            }
+    
+            html += '</div>';
+            return html;
+        }
+    
+        renderStatsCards(stats) {
+            return `
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card bg-primary text-white">
+                            <div class="card-body text-center">
+                                <h3>${stats.sites?.toLocaleString() || 0}</h3>
+                                <p class="mb-0">Total Sites</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-success text-white">
+                            <div class="card-body text-center">
+                                <h3>${stats.pages?.toLocaleString() || 0}</h3>
+                                <p class="mb-0">Total Pages</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-info text-white">
+                            <div class="card-body text-center">
+                                <h3>${stats.media?.toLocaleString() || 0}</h3>
+                                <p class="mb-0">Media Files</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-warning text-white">
+                            <div class="card-body text-center">
+                                <h3>${stats.flagged_media?.toLocaleString() || 0}</h3>
+                                <p class="mb-0">Flagged Media</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    
+        renderNetworkChart(networks) {
+            const total = (networks.clearnet || 0) + (networks.tor || 0) + (networks.i2p || 0);
+            const clearnetPct = total > 0 ? ((networks.clearnet || 0) / total * 100).toFixed(1) : 0;
+            const torPct = total > 0 ? ((networks.tor || 0) / total * 100).toFixed(1) : 0;
+            const i2pPct = total > 0 ? ((networks.i2p || 0) / total * 100).toFixed(1) : 0;
+    
+            return `
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="fas fa-network-wired"></i> Network Distribution</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="progress mb-2" style="height: 30px;">
+                                    <div class="progress-bar bg-primary" role="progressbar" style="width: ${clearnetPct}%" 
+                                         title="Clearnet: ${networks.clearnet || 0} sites (${clearnetPct}%)">
+                                        Clearnet: ${networks.clearnet || 0}
+                                    </div>
+                                    <div class="progress-bar bg-dark" role="progressbar" style="width: ${torPct}%" 
+                                         title="Tor: ${networks.tor || 0} sites (${torPct}%)">
+                                        Tor: ${networks.tor || 0}
+                                    </div>
+                                    <div class="progress-bar bg-secondary" role="progressbar" style="width: ${i2pPct}%" 
+                                         title="I2P: ${networks.i2p || 0} sites (${i2pPct}%)">
+                                        I2P: ${networks.i2p || 0}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="d-flex flex-column">
+                                    <small><span class="badge bg-primary">🌍</span> Clearnet: ${networks.clearnet || 0} (${clearnetPct}%)</small>
+                                    <small><span class="badge bg-dark">🧅</span> Tor: ${networks.tor || 0} (${torPct}%)</small>
+                                    <small><span class="badge bg-secondary">🌐</span> I2P: ${networks.i2p || 0} (${i2pPct}%)</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    
+        renderRecentSitesTable(recentSites) {
+            let html = `
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="fas fa-clock"></i> Recent Activity</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Network</th>
+                                        <th>URL</th>
+                                        <th>Pages</th>
+                                        <th>Last Crawled</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+            `;
+    
+            recentSites.slice(0, 10).forEach(site => {
+                const networkIcon = site.network_type === 'tor' ? '🧅' : 
+                                   site.network_type === 'i2p' ? '🌐' : '🌍';
+                const networkBadge = site.network_type === 'tor' ? 'bg-dark' : 
+                                    site.network_type === 'i2p' ? 'bg-secondary' : 'bg-primary';
+                
+                const lastCrawled = new Date(site.last_crawled).toLocaleString();
+                const shortUrl = site.url.length > 50 ? site.url.substring(0, 50) + '...' : site.url;
+                
+                html += `
+                    <tr>
+                        <td><span class="badge ${networkBadge}">${networkIcon} ${site.network_type.toUpperCase()}</span></td>
+                        <td><small title="${site.url}">${this.escapeHtml(shortUrl)}</small></td>
+                        <td><span class="badge bg-info">${site.page_count || 0}</span></td>
+                        <td><small>${lastCrawled}</small></td>
+                    </tr>
+                `;
+            });
+    
+            html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+    
+            return html;
+        }
+    
+        renderMarkdown(markdown) {
+            return markdown
+                .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+                .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+                .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+                .replace(/^\* (.*$)/gim, '<li>$1</li>')
+                .replace(/^\- (.*$)/gim, '<li>$1</li>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\n/g, '<br>');
+        }
+    
+        formatQuery() {
+            if (!this.sqlEditor) return;
+            
+            // Basic SQL formatting
+            let query = this.sqlEditor.getValue();
+            query = query
+                .replace(/\bSELECT\b/gi, 'SELECT')
+                .replace(/\bFROM\b/gi, '\nFROM')
+                .replace(/\bWHERE\b/gi, '\nWHERE')
+                .replace(/\bGROUP BY\b/gi, '\nGROUP BY')
+                .replace(/\bORDER BY\b/gi, '\nORDER BY')
+                .replace(/\bLIMIT\b/gi, '\nLIMIT');
+            
+            this.sqlEditor.setValue(query);
+        }
+    
+        showQueryHistory() {
+            // Implementation for query history modal
+            console.log('Query history:', this.queryHistory);
+        }
+    
+        addToQueryHistory(query, result) {
+            this.queryHistory.unshift({
+                query: query,
+                timestamp: new Date(),
+                success: result.success,
+                rowCount: result.query_results?.length || 0
+            });
+            
+            // Keep only last 50 queries
+            if (this.queryHistory.length > 50) {
+                this.queryHistory = this.queryHistory.slice(0, 50);
+            }
+        }
+    
+        // Utility functions
+        formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+    
+        escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+        }
+    
+        showError(message) {
+            // Create toast notification
+            const toast = document.createElement('div');
+            toast.className = 'toast align-items-center text-white bg-danger border-0 position-fixed top-0 end-0 m-3';
+            toast.style.zIndex = '9999';
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">
+                        <i class="fas fa-exclamation-triangle me-2"></i>${message}
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            `;
+            
+            document.body.appendChild(toast);
+            const bsToast = new bootstrap.Toast(toast);
+            bsToast.show();
+            
+            // Remove from DOM after hiding
+            toast.addEventListener('hidden.bs.toast', () => {
+                toast.remove();
+            });
+        }
+    
+        showSuccess(message) {
+            // Create success toast notification
+            const toast = document.createElement('div');
+            toast.className = 'toast align-items-center text-white bg-success border-0 position-fixed top-0 end-0 m-3';
+            toast.style.zIndex = '9999';
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">
+                        <i class="fas fa-check-circle me-2"></i>${message}
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            `;
+            
+            document.body.appendChild(toast);
+            const bsToast = new bootstrap.Toast(toast);
+            bsToast.show();
+            
+            // Remove from DOM after hiding
+            toast.addEventListener('hidden.bs.toast', () => {
+                toast.remove();
+            });
+        }
+    }
+    
+    // Global functions for HTML onclick handlers
+    function createDataset() {
+        if (window.aiReports) {
+            window.aiReports.createDataset();
+        }
+    }
+    
+    function executeQuery() {
+        if (window.aiReports) {
+            window.aiReports.executeQuery();
+        }
+    }
+    
+    function formatQuery() {
+        if (window.aiReports) {
+            window.aiReports.formatQuery();
+        }
+    }
+    
+    function showQueryHistory() {
+        if (window.aiReports) {
+            window.aiReports.showQueryHistory();
+        }
+    }
+    
+    function refreshDatasets() {
+        if (window.aiReports) {
+            window.aiReports.loadDatasets();
+        }
+    }
+    
+    // Initialize when DOM is loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        window.aiReports = new AdvancedAIReports();
+    });
+  memeclip_integration.js: |
+    /**
+     * MemeCLIP Integration for Advanced AI Reports
+     * Handles image analysis, meme detection, and similarity search
+     */
+    
+    class MemeCLIPIntegration {
+        constructor(aiReports) {
+            this.aiReports = aiReports;
+            this.analysisResults = [];
+            this.init();
+        }
+    
+        init() {
+            this.setupImageUpload();
+            console.log('MemeCLIP Integration initialized');
+        }
+    
+        setupImageUpload() {
+            const uploadZone = document.querySelector('.image-upload-zone');
+            if (uploadZone) {
+                // Drag and drop functionality
+                uploadZone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    uploadZone.classList.add('dragover');
+                });
+    
+                uploadZone.addEventListener('dragleave', () => {
+                    uploadZone.classList.remove('dragover');
+                });
+    
+                uploadZone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    uploadZone.classList.remove('dragover');
+                    
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) {
+                        this.handleImageUpload(files[0]);
+                    }
+                });
+            }
+        }
+    
+        async analyzeImage(input) {
+            const file = input.files[0];
+            if (!file) return;
+    
+            await this.handleImageUpload(file);
+        }
+    
+        async handleImageUpload(file) {
+            if (!this.isValidImageFile(file)) {
+                this.aiReports.showError('Please upload a valid image file (JPG, PNG, WebP, GIF)');
+                return;
+            }
+    
+            try {
+                this.aiReports.showLoading('Analyzing Image...', 'Running MemeCLIP analysis...');
+    
+                // Create FormData for file upload
+                const formData = new FormData();
+                formData.append('image', file);
+                formData.append('analysis_type', 'full');
+    
+                const response = await fetch('/api/ai-reports/memeclip/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+    
+                const result = await response.json();
+    
+                if (response.ok && result.success) {
+                    this.displayAnalysisResult(result);
+                    this.analysisResults.push(result);
+                    this.aiReports.showSuccess('Image analysis completed!');
+                } else {
+                    this.aiReports.showError(result.error || 'Image analysis failed');
+                }
+            } catch (error) {
+                console.error('Error analyzing image:', error);
+                this.aiReports.showError('Error analyzing image: ' + error.message);
+            } finally {
+                this.aiReports.hideLoading();
+            }
+        }
+    
+        displayAnalysisResult(result) {
+            const container = document.getElementById('memeclipResults');
+            if (!container) return;
+    
+            const resultHtml = `
+                <div class="analysis-result fade-in">
+                    <div class="card bg-dark text-white">
+                        <div class="card-header">
+                            <h6 class="mb-0">
+                                <i class="fas fa-brain"></i> Analysis Result
+                                <span class="badge bg-success ms-2">${result.confidence_score ? (result.confidence_score * 100).toFixed(1) + '%' : 'N/A'}</span>
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            ${this.renderAnalysisDetails(result)}
+                        </div>
+                    </div>
+                </div>
+            `;
+    
+            container.innerHTML = resultHtml;
+            container.style.display = 'block';
+    
+            // Also update the MemeCLIP tab content
+            this.updateMemeCLIPTab(result);
+        }
+    
+        renderAnalysisDetails(result) {
+            let html = '';
+    
+            // Meme detection result
+            if (result.meme_detected !== undefined) {
+                html += `
+                    <div class="mb-3">
+                        <strong>Meme Detection:</strong>
+                        <span class="badge ${result.meme_detected ? 'bg-warning' : 'bg-success'} ms-2">
+                            ${result.meme_detected ? 'Meme Detected' : 'Not a Meme'}
+                        </span>
+                    </div>
+                `;
+            }
+    
+            // Classification results
+            if (result.classification_result) {
+                html += `
+                    <div class="mb-3">
+                        <strong>Classification:</strong>
+                        <div class="mt-2">
+                            ${this.renderClassificationResults(result.classification_result)}
+                        </div>
+                    </div>
+                `;
+            }
+    
+            // Similarity scores
+            if (result.similarity_scores) {
+                html += `
+                    <div class="mb-3">
+                        <strong>Similarity Analysis:</strong>
+                        <div class="mt-2">
+                            ${this.renderSimilarityScores(result.similarity_scores)}
+                        </div>
+                    </div>
+                `;
+            }
+    
+            // Analysis metadata
+            html += `
+                <div class="mt-3 pt-3 border-top">
+                    <small class="text-muted">
+                        <i class="fas fa-clock"></i> Analyzed: ${new Date(result.analysis_timestamp || Date.now()).toLocaleString()}
+                    </small>
+                </div>
+            `;
+    
+            return html;
+        }
+    
+        renderClassificationResults(classification) {
+            if (Array.isArray(classification)) {
+                return classification.map(item => `
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span>${item.label || item.class || 'Unknown'}</span>
+                        <span class="badge bg-info">${((item.score || item.confidence || 0) * 100).toFixed(1)}%</span>
+                    </div>
+                `).join('');
+            } else if (typeof classification === 'object') {
+                return Object.entries(classification).map(([key, value]) => `
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span>${key}</span>
+                        <span class="badge bg-info">${typeof value === 'number' ? (value * 100).toFixed(1) + '%' : value}</span>
+                    </div>
+                `).join('');
+            }
+            return '<span class="text-muted">No classification data available</span>';
+        }
+    
+        renderSimilarityScores(similarity) {
+            if (Array.isArray(similarity)) {
+                return similarity.map(item => `
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span>${item.image || item.id || 'Similar Image'}</span>
+                        <span class="badge bg-warning">${((item.score || item.similarity || 0) * 100).toFixed(1)}%</span>
+                    </div>
+                `).join('');
+            }
+            return '<span class="text-muted">No similarity data available</span>';
+        }
+    
+        updateMemeCLIPTab(result) {
+            const memeclipContent = document.getElementById('memeclipContent');
+            if (!memeclipContent) return;
+    
+            const existingResults = memeclipContent.querySelector('.analysis-results') || document.createElement('div');
+            existingResults.className = 'analysis-results';
+    
+            if (!memeclipContent.querySelector('.analysis-results')) {
+                memeclipContent.innerHTML = `
+                    <div class="mb-3">
+                        <button class="btn btn-primary me-2" onclick="searchSimilarImages()">
+                            <i class="fas fa-search"></i> Search Similar
+                        </button>
+                        <button class="btn btn-info me-2" onclick="viewAnalysisResults()">
+                            <i class="fas fa-chart-pie"></i> View Results
+                        </button>
+                        <button class="btn btn-success" onclick="exportMemeclipData()">
+                            <i class="fas fa-download"></i> Export Data
+                        </button>
+                    </div>
+                    <div class="analysis-results"></div>
+                `;
+            }
+    
+            const resultsContainer = memeclipContent.querySelector('.analysis-results');
+            const newResult = document.createElement('div');
+            newResult.className = 'card mb-3';
+            newResult.innerHTML = `
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        Analysis #${this.analysisResults.length}
+                        <span class="badge bg-primary ms-2">${new Date().toLocaleTimeString()}</span>
+                    </h6>
+                </div>
+                <div class="card-body">
+                    ${this.renderAnalysisDetails(result)}
+                </div>
+            `;
+    
+            resultsContainer.insertBefore(newResult, resultsContainer.firstChild);
+        }
+    
+        async batchAnalyzeImages() {
+            try {
+                this.aiReports.showLoading('Batch Analysis...', 'Analyzing multiple images from dataset...');
+    
+                const response = await fetch('/api/ai-reports/memeclip/batch-analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        dataset_id: this.aiReports.currentDataset?.id,
+                        limit: 50,
+                        analysis_type: 'full'
+                    })
+                });
+    
+                const result = await response.json();
+    
+                if (response.ok && result.success) {
+                    this.displayBatchResults(result);
+                    this.aiReports.showSuccess(`Batch analysis completed! Analyzed ${result.analyzed_count || 0} images.`);
+                } else {
+                    this.aiReports.showError(result.error || 'Batch analysis failed');
+                }
+            } catch (error) {
+                console.error('Error in batch analysis:', error);
+                this.aiReports.showError('Error in batch analysis: ' + error.message);
+            } finally {
+                this.aiReports.hideLoading();
+            }
+        }
+    
+        displayBatchResults(result) {
+            const memeclipContent = document.getElementById('memeclipContent');
+            if (!memeclipContent) return;
+    
+            const batchResultsHtml = `
+                <div class="batch-results card mb-3">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="fas fa-layer-group"></i> Batch Analysis Results
+                            <span class="badge bg-success ms-2">${result.analyzed_count || 0} images</span>
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Summary Statistics</h6>
+                                <ul class="list-unstyled">
+                                    <li><i class="fas fa-images"></i> Total Analyzed: ${result.analyzed_count || 0}</li>
+                                    <li><i class="fas fa-laugh"></i> Memes Detected: ${result.memes_detected || 0}</li>
+                                    <li><i class="fas fa-flag"></i> Flagged Content: ${result.flagged_count || 0}</li>
+                                    <li><i class="fas fa-clock"></i> Processing Time: ${result.processing_time || 'N/A'}</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Top Classifications</h6>
+                                ${this.renderTopClassifications(result.top_classifications)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+    
+            // Insert at the top of the content
+            const existingContent = memeclipContent.innerHTML;
+            memeclipContent.innerHTML = batchResultsHtml + existingContent;
+        }
+    
+        renderTopClassifications(classifications) {
+            if (!classifications || !Array.isArray(classifications)) {
+                return '<p class="text-muted">No classification data available</p>';
+            }
+    
+            return `
+                <div class="top-classifications">
+                    ${classifications.slice(0, 5).map(item => `
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span>${item.label || item.class}</span>
+                            <span class="badge bg-info">${item.count || 0}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+    
+        async searchSimilarImages() {
+            if (this.analysisResults.length === 0) {
+                this.aiReports.showError('No analysis results available for similarity search');
+                return;
+            }
+    
+            try {
+                this.aiReports.showLoading('Searching...', 'Finding similar images in dataset...');
+    
+                const lastResult = this.analysisResults[this.analysisResults.length - 1];
+                
+                const response = await fetch('/api/ai-reports/memeclip/search-similar', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        reference_analysis_id: lastResult.id,
+                        dataset_id: this.aiReports.currentDataset?.id,
+                        similarity_threshold: 0.7,
+                        limit: 20
+                    })
+                });
+    
+                const result = await response.json();
+    
+                if (response.ok && result.success) {
+                    this.displaySimilarityResults(result);
+                    this.aiReports.showSuccess(`Found ${result.similar_images?.length || 0} similar images!`);
+                } else {
+                    this.aiReports.showError(result.error || 'Similarity search failed');
+                }
+            } catch (error) {
+                console.error('Error in similarity search:', error);
+                this.aiReports.showError('Error in similarity search: ' + error.message);
+            } finally {
+                this.aiReports.hideLoading();
+            }
+        }
+    
+        displaySimilarityResults(result) {
+            const memeclipContent = document.getElementById('memeclipContent');
+            if (!memeclipContent || !result.similar_images) return;
+    
+            const similarityHtml = `
+                <div class="similarity-results card mb-3">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="fas fa-search"></i> Similar Images
+                            <span class="badge bg-info ms-2">${result.similar_images.length} found</span>
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            ${result.similar_images.map(img => `
+                                <div class="col-md-4 mb-3">
+                                    <div class="card">
+                                        <div class="card-body text-center">
+                                            <h6 class="card-title">${img.filename || 'Unknown'}</h6>
+                                            <p class="card-text">
+                                                <span class="badge bg-success">
+                                                    ${(img.similarity_score * 100).toFixed(1)}% similar
+                                                </span>
+                                            </p>
+                                            <small class="text-muted">${img.source_url || 'No URL'}</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+    
+            // Insert at the top of the content
+            const existingContent = memeclipContent.innerHTML;
+            memeclipContent.innerHTML = similarityHtml + existingContent;
+        }
+    
+        async viewAnalysisResults() {
+            try {
+                const response = await fetch(`/api/ai-reports/memeclip/results/${this.aiReports.currentDataset?.id || 'all'}`);
+                const result = await response.json();
+    
+                if (response.ok && result.success) {
+                    this.displayAllResults(result.results);
+                } else {
+                    this.aiReports.showError(result.error || 'Failed to load analysis results');
+                }
+            } catch (error) {
+                console.error('Error loading analysis results:', error);
+                this.aiReports.showError('Error loading analysis results: ' + error.message);
+            }
+        }
+    
+        displayAllResults(results) {
+            const memeclipContent = document.getElementById('memeclipContent');
+            if (!memeclipContent) return;
+    
+            const allResultsHtml = `
+                <div class="all-results card mb-3">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="fas fa-chart-pie"></i> All Analysis Results
+                            <span class="badge bg-primary ms-2">${results?.length || 0} results</span>
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Image</th>
+                                        <th>Meme</th>
+                                        <th>Confidence</th>
+                                        <th>Date</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${(results || []).map(result => `
+                                        <tr>
+                                            <td>${result.filename || 'Unknown'}</td>
+                                            <td>
+                                                <span class="badge ${result.meme_detected ? 'bg-warning' : 'bg-success'}">
+                                                    ${result.meme_detected ? 'Yes' : 'No'}
+                                                </span>
+                                            </td>
+                                            <td>${((result.confidence_score || 0) * 100).toFixed(1)}%</td>
+                                            <td>${new Date(result.analysis_timestamp).toLocaleDateString()}</td>
+                                            <td>
+                                                <button class="btn btn-sm btn-outline-primary" onclick="viewResultDetails(${result.id})">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+    
+            // Replace existing content
+            memeclipContent.innerHTML = allResultsHtml;
+        }
+    
+        async exportMemeclipData() {
+            try {
+                this.aiReports.showLoading('Exporting...', 'Preparing MemeCLIP analysis data...');
+    
+                const response = await fetch('/api/ai-reports/memeclip/export', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        dataset_id: this.aiReports.currentDataset?.id,
+                        format: 'json',
+                        include_images: false
+                    })
+                });
+    
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `memeclip_analysis_${new Date().toISOString().split('T')[0]}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+    
+                    this.aiReports.showSuccess('MemeCLIP data exported successfully!');
+                } else {
+                    const result = await response.json();
+                    this.aiReports.showError(result.error || 'Export failed');
+                }
+            } catch (error) {
+                console.error('Error exporting MemeCLIP data:', error);
+                this.aiReports.showError('Error exporting data: ' + error.message);
+            } finally {
+                this.aiReports.hideLoading();
+            }
+        }
+    
+        isValidImageFile(file) {
+            const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/bmp'];
+            return validTypes.includes(file.type);
+        }
+    }
+    
+    // Global functions for HTML onclick handlers
+    function analyzeImage(input) {
+        if (window.aiReports && window.aiReports.memeclip) {
+            window.aiReports.memeclip.analyzeImage(input);
+        }
+    }
+    
+    function batchAnalyzeImages() {
+        if (window.aiReports && window.aiReports.memeclip) {
+            window.aiReports.memeclip.batchAnalyzeImages();
+        }
+    }
+    
+    function searchSimilarImages() {
+        if (window.aiReports && window.aiReports.memeclip) {
+            window.aiReports.memeclip.searchSimilarImages();
+        }
+    }
+    
+    function viewAnalysisResults() {
+        if (window.aiReports && window.aiReports.memeclip) {
+            window.aiReports.memeclip.viewAnalysisResults();
+        }
+    }
+    
+    function exportMemeclipData() {
+        if (window.aiReports && window.aiReports.memeclip) {
+            window.aiReports.memeclip.exportMemeclipData();
+        }
+    }
+    
+    function viewResultDetails(resultId) {
+        console.log('View result details for ID:', resultId);
+        // Implementation for viewing detailed results
+    }
+    
+    // Export for use in main AI Reports class
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = MemeCLIPIntegration;
+    }

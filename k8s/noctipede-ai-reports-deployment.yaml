@@ -1,0 +1,301 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noctipede-app-ai-reports
+  namespace: noctipede
+  labels:
+    app: noctipede-app
+    component: ai-reports
+    version: advanced
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noctipede-app
+      component: ai-reports
+  template:
+    metadata:
+      labels:
+        app: noctipede-app
+        component: ai-reports
+        version: advanced
+    spec:
+      initContainers:
+      # Wait for database to be ready
+      - name: wait-for-database
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for MariaDB to be ready..."
+          until nc -z mariadb.default 3306; do
+            echo "⏳ MariaDB not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ MariaDB is ready!"
+      
+      # Wait for Tor proxy to be ready
+      - name: wait-for-tor
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🧅 Waiting for Tor proxy to be ready..."
+          for attempt in $(seq 1 12); do
+            echo "Tor test attempt $attempt/12..."
+            if nc -z tor-proxy 9150; then
+              echo "✅ Tor proxy is ready!"
+              exit 0
+            fi
+            echo "⏳ Waiting for Tor proxy..."
+            sleep 10
+          done
+          echo "⚠️  Tor proxy not ready, continuing anyway..."
+      
+      # Wait for I2P proxy to be ready
+      - name: wait-for-i2p
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🌐 Waiting for I2P proxy to be ready..."
+          for attempt in $(seq 1 12); do
+            echo "I2P test attempt $attempt/12..."
+            if nc -z i2p-proxy 4444; then
+              echo "✅ I2P proxy is ready!"
+              exit 0
+            fi
+            echo "⏳ Waiting for I2P proxy..."
+            sleep 10
+          done
+          echo "⚠️  I2P proxy not ready, continuing anyway..."
+
+      containers:
+      - name: noctipede-app
+        image: ghcr.io/splinterstice/noctipede:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        # Database Configuration
+        - name: MARIADB_HOST
+          value: "mariadb.default"
+        - name: MARIADB_PORT
+          value: "3306"
+        - name: MARIADB_USER
+          valueFrom:
+            secretKeyRef:
+              name: noctipede-secrets
+              key: mariadb-user
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: noctipede-secrets
+              key: mariadb-password
+        - name: MARIADB_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: noctipede-secrets
+              key: mariadb-database
+
+        # MinIO Configuration
+        - name: MINIO_ENDPOINT
+          value: "minio-crawler-hl.minio-service:9000"
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: noctipede-secrets
+              key: minio-access-key
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: noctipede-secrets
+              key: minio-secret-key
+        - name: MINIO_BUCKET_NAME
+          value: "noctipede-data"
+        - name: MINIO_SECURE
+          value: "false"
+
+        # AI/Ollama Configuration
+        - name: OLLAMA_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: noctipede-config
+              key: OLLAMA_ENDPOINT
+        - name: OLLAMA_VISION_MODEL
+          value: "llama3.2-vision:11b"
+        - name: OLLAMA_TEXT_MODEL
+          value: "gemma3:12b"
+        - name: OLLAMA_MODERATION_MODEL
+          value: "llama3.1:8b"
+
+        # Network Configuration
+        - name: TOR_PROXY_HOST
+          value: "tor-proxy"
+        - name: TOR_PROXY_PORT
+          value: "9150"
+        - name: I2P_PROXY_HOST
+          value: "i2p-proxy"
+        - name: I2P_PROXY_PORT
+          value: "4444"
+
+        # AI Reports Configuration
+        - name: AI_REPORTS_ENABLED
+          value: "true"
+        - name: AI_REPORTS_ADVANCED
+          value: "true"
+        - name: MEMECLIP_ENABLED
+          value: "true"
+        - name: SCREENSHOT_SERVICE_ENABLED
+          value: "true"
+        - name: QUERY_ENGINE_TYPE
+          value: "pandas"
+        - name: DATASET_STORAGE_PATH
+          value: "/app/datasets"
+
+        # Application Configuration
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: WEB_SERVER_PORT
+          value: "8080"
+        - name: WEB_SERVER_HOST
+          value: "0.0.0.0"
+        - name: CONTENT_ANALYSIS_ENABLED
+          value: "true"
+        - name: IMAGE_ANALYSIS_ENABLED
+          value: "true"
+
+        volumeMounts:
+        # Mount the sites file
+        - name: sites-data
+          mountPath: /app/data
+          readOnly: true
+        
+        # Mount output directory
+        - name: output-data
+          mountPath: /app/output
+        
+        # Mount datasets directory
+        - name: datasets-data
+          mountPath: /app/datasets
+        
+        # Mount AI Reports templates
+        - name: ai-reports-templates
+          mountPath: /app/portal/templates/ai_reports_advanced.html
+          subPath: ai_reports_advanced.html
+          readOnly: true
+        
+        # Mount AI Reports JavaScript files
+        - name: ai-reports-js
+          mountPath: /app/static/ai_reports/js/ai_reports_advanced.js
+          subPath: ai_reports_advanced.js
+          readOnly: true
+        
+        - name: ai-reports-js
+          mountPath: /app/static/ai_reports/js/memeclip_integration.js
+          subPath: memeclip_integration.js
+          readOnly: true
+        
+        # Mount AI Reports API files
+        - name: ai-reports-api
+          mountPath: /app/api/ai_reports_advanced.py
+          subPath: ai_reports_advanced.py
+          readOnly: true
+
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+      volumes:
+      # Sites data volume
+      - name: sites-data
+        nfs:
+          server: 10.1.1.10
+          path: /mnt/data/noctipede/sites
+      
+      # Output data volume
+      - name: output-data
+        persistentVolumeClaim:
+          claimName: noctipede-output-pvc
+      
+      # Datasets data volume
+      - name: datasets-data
+        persistentVolumeClaim:
+          claimName: noctipede-datasets-pvc
+      
+      # AI Reports templates
+      - name: ai-reports-templates
+        configMap:
+          name: ai-reports-advanced-templates
+      
+      # AI Reports JavaScript files
+      - name: ai-reports-js
+        configMap:
+          name: ai-reports-js-files
+      
+      # AI Reports API files
+      - name: ai-reports-api
+        configMap:
+          name: ai-reports-api-files
+
+      restartPolicy: Always
+      
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: noctipede-ai-reports-service
+  namespace: noctipede
+  labels:
+    app: noctipede-app
+    component: ai-reports
+spec:
+  type: NodePort
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 31080
+    name: http
+  selector:
+    app: noctipede-app
+    component: ai-reports
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: noctipede-datasets-pvc
+  namespace: noctipede
+  labels:
+    app: noctipede
+    component: ai-reports
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: local-path

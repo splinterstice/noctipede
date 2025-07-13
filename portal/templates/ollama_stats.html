@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ollama Usage Statistics - Noctipede</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .stat-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #ffd700;
+        }
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+        .model-stats {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .model-name {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #ffd700;
+            margin-bottom: 15px;
+        }
+        .model-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+        .detail-item {
+            text-align: center;
+        }
+        .detail-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        .detail-label {
+            font-size: 0.8em;
+            opacity: 0.8;
+            margin-top: 5px;
+        }
+        .refresh-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            margin: 10px;
+        }
+        .refresh-btn:hover {
+            background: #45a049;
+        }
+        .time-selector {
+            margin: 20px 0;
+            text-align: center;
+        }
+        .time-selector select {
+            padding: 8px 15px;
+            border-radius: 5px;
+            border: none;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 1em;
+        }
+        .loading {
+            text-align: center;
+            font-size: 1.2em;
+            margin: 50px 0;
+        }
+        .error {
+            background: rgba(255, 0, 0, 0.2);
+            border: 1px solid rgba(255, 0, 0, 0.5);
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 Ollama Usage Statistics</h1>
+            <p>Real-time AI model usage tracking and analytics</p>
+        </div>
+
+        <div class="time-selector">
+            <label for="timeRange">Time Range: </label>
+            <select id="timeRange" onchange="loadStats()">
+                <option value="1">Last Hour</option>
+                <option value="6">Last 6 Hours</option>
+                <option value="24" selected>Last 24 Hours</option>
+                <option value="72">Last 3 Days</option>
+                <option value="168">Last Week</option>
+            </select>
+            <button class="refresh-btn" onclick="loadStats()">🔄 Refresh</button>
+        </div>
+
+        <div id="loading" class="loading">Loading statistics...</div>
+        <div id="error" class="error" style="display: none;"></div>
+
+        <div id="summary-stats" class="stats-grid" style="display: none;"></div>
+        <div id="model-stats" style="display: none;"></div>
+    </div>
+
+    <script>
+        let currentHours = 24;
+
+        async function loadStats() {
+            const timeRange = document.getElementById('timeRange').value;
+            currentHours = parseInt(timeRange);
+            
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('summary-stats').style.display = 'none';
+            document.getElementById('model-stats').style.display = 'none';
+
+            try {
+                // Load summary stats
+                const summaryResponse = await fetch(`/api/ollama/stats/summary?hours=${currentHours}`);
+                const summaryData = await summaryResponse.json();
+
+                if (summaryData.success) {
+                    displaySummaryStats(summaryData.data);
+                    displayModelStats(summaryData.data.models);
+                } else {
+                    throw new Error('Failed to load statistics');
+                }
+
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('summary-stats').style.display = 'grid';
+                document.getElementById('model-stats').style.display = 'block';
+
+            } catch (error) {
+                console.error('Error loading stats:', error);
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('error').textContent = `Error loading statistics: ${error.message}`;
+            }
+        }
+
+        function displaySummaryStats(data) {
+            const container = document.getElementById('summary-stats');
+            container.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-title">Total Requests</div>
+                    <div class="stat-value">${data.total_requests || 0}</div>
+                    <div class="stat-label">All models combined</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Success Rate</div>
+                    <div class="stat-value">${(data.overall_success_rate || 0).toFixed(1)}%</div>
+                    <div class="stat-label">${data.total_successful || 0} successful</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Active Models</div>
+                    <div class="stat-value">${data.total_models || 0}</div>
+                    <div class="stat-label">Models with requests</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Total Tokens</div>
+                    <div class="stat-value">${(data.total_tokens || 0).toLocaleString()}</div>
+                    <div class="stat-label">Tokens processed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Avg Duration</div>
+                    <div class="stat-value">${(data.avg_duration || 0).toFixed(2)}s</div>
+                    <div class="stat-label">Per request</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Failed Requests</div>
+                    <div class="stat-value">${data.total_failed || 0}</div>
+                    <div class="stat-label">Errors encountered</div>
+                </div>
+            `;
+        }
+
+        function displayModelStats(models) {
+            const container = document.getElementById('model-stats');
+            let html = '<h2>📊 Per-Model Statistics</h2>';
+
+            if (!models || Object.keys(models).length === 0) {
+                html += '<p>No model statistics available for the selected time period.</p>';
+            } else {
+                Object.entries(models).forEach(([modelName, stats]) => {
+                    const requestTypes = Object.entries(stats.request_types || {})
+                        .map(([type, count]) => `${type}: ${count}`)
+                        .join(', ');
+
+                    html += `
+                        <div class="model-stats">
+                            <div class="model-name">🤖 ${modelName}</div>
+                            <div class="model-details">
+                                <div class="detail-item">
+                                    <div class="detail-value">${stats.total_requests || 0}</div>
+                                    <div class="detail-label">Total Requests</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-value">${(stats.success_rate || 0).toFixed(1)}%</div>
+                                    <div class="detail-label">Success Rate</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-value">${(stats.avg_duration || 0).toFixed(2)}s</div>
+                                    <div class="detail-label">Avg Duration</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-value">${(stats.total_tokens || 0).toLocaleString()}</div>
+                                    <div class="detail-label">Total Tokens</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-value">${stats.successful_requests || 0}</div>
+                                    <div class="detail-label">Successful</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-value">${stats.failed_requests || 0}</div>
+                                    <div class="detail-label">Failed</div>
+                                </div>
+                            </div>
+                            ${requestTypes ? `<div style="margin-top: 15px; font-size: 0.9em; opacity: 0.8;">Request Types: ${requestTypes}</div>` : ''}
+                            ${stats.last_request ? `<div style="margin-top: 10px; font-size: 0.8em; opacity: 0.7;">Last Request: ${new Date(stats.last_request).toLocaleString()}</div>` : ''}
+                        </div>
+                    `;
+                });
+            }
+
+            container.innerHTML = html;
+        }
+
+        // Load stats on page load
+        document.addEventListener('DOMContentLoaded', loadStats);
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadStats, 30000);
+    </script>
+</body>
+</html>

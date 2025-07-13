@@ -1,0 +1,28 @@
+# Tor configuration for Noctipede
+# SOCKS proxy
+SocksPort 0.0.0.0:9050
+
+# Control port - accessible from other containers
+ControlPort 0.0.0.0:9051
+
+# DNS port
+DNSPort 127.0.0.1:5353
+
+# Transparent proxy
+TransPort 0.0.0.0:9040
+
+# Circuit management
+NewCircuitPeriod 30
+MaxCircuitDirtiness 600
+CircuitBuildTimeout 10
+
+# Logging
+Log notice stdout
+
+# Data directory
+DataDirectory /var/lib/tor
+
+# Allow connections from Docker network
+# Note: This is for the control port authentication
+# We'll disable authentication for simplicity in container environment
+CookieAuthentication 0

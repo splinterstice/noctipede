@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: noctipede-portal-service
+  namespace: noctipede
+  labels:
+    app: noctipede-portal
+    component: web
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: noctipede-portal
+  sessionAffinity: None
+---
+# Internal service for crawler app (no external access needed)
+apiVersion: v1
+kind: Service
+metadata:
+  name: noctipede-app-service
+  namespace: noctipede
+  labels:
+    app: noctipede-app
+    component: crawler
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: noctipede-app

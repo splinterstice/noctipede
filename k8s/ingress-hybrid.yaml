@@ -1,0 +1,59 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: noctipede-https
+  namespace: noctipede
+  labels:
+    app: noctipede-portal
+  annotations:
+    cert-manager.io/cluster-issuer: ca-issuer
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+spec:
+  tls:
+  - hosts:
+    - noctipede.splinterstice.celestium.life
+    secretName: noctipede-cert
+  rules:
+  - host: noctipede.splinterstice.celestium.life
+    http:
+      paths:
+      # Route API calls to the enhanced app service
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-app-service
+            port:
+              number: 8080
+      # Route enhanced dashboard to app service
+      - path: /enhanced
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-app-service
+            port:
+              number: 8080
+      # Route combined dashboard to app service
+      - path: /combined
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-app-service
+            port:
+              number: 8080
+      # Route AI reports to app service
+      - path: /ai-reports
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-app-service
+            port:
+              number: 8080
+      # Route everything else to the stable portal service
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-portal-service
+            port:
+              number: 8080

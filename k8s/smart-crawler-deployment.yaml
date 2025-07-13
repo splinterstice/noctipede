@@ -1,0 +1,328 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noctipede-smart-crawler
+  namespace: noctipede
+  labels:
+    app: noctipede-smart-crawler
+    component: crawler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noctipede-smart-crawler
+      component: crawler
+  template:
+    metadata:
+      labels:
+        app: noctipede-smart-crawler
+        component: crawler
+    spec:
+      initContainers:
+      # Wait for database to be ready
+      - name: wait-for-database
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for MariaDB to be ready..."
+          until nc -z mariadb 3306; do
+            echo "⏳ MariaDB not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ MariaDB is ready!"
+      
+      # Wait for portal to be ready
+      - name: wait-for-portal
+        image: curlimages/curl:latest
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🌐 Waiting for Noctipede Portal to be ready..."
+          until curl -s http://noctipede-portal-service:8080/api/health > /dev/null 2>&1; do
+            echo "⏳ Portal not ready, waiting..."
+            sleep 10
+          done
+          echo "✅ Portal is ready!"
+      
+      # Wait for BOTH proxies to be 100% ready via Portal API
+      - name: wait-for-proxy-readiness
+        image: curlimages/curl:latest
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🚀 Waiting for BOTH Tor and I2P proxies to be 100% ready..."
+          echo "📡 This will check the Portal API for complete proxy readiness..."
+          
+          max_attempts=60  # 30 minutes total (30 seconds * 60)
+          attempt=0
+          
+          while [ $attempt -lt $max_attempts ]; do
+            attempt=$((attempt + 1))
+            echo "🔍 Proxy readiness check attempt $attempt/$max_attempts..."
+            
+            # Get proxy readiness status from portal API
+            if response=$(curl -s http://noctipede-portal-service:8080/api/proxy-readiness 2>/dev/null); then
+              echo "📊 Portal API Response: $response"
+              
+              # Parse JSON response to check if both proxies are ready
+              tor_ready=$(echo "$response" | grep -o '"tor_ready":[^,]*' | cut -d':' -f2 | tr -d ' ')
+              i2p_ready=$(echo "$response" | grep -o '"i2p_ready":[^,]*' | cut -d':' -f2 | tr -d ' ')
+              both_ready=$(echo "$response" | grep -o '"both_ready":[^,]*' | cut -d':' -f2 | tr -d ' ')
+              overall_percentage=$(echo "$response" | grep -o '"overall":[^}]*' | cut -d':' -f2 | tr -d ' ')
+              
+              echo "🧅 Tor Ready: $tor_ready"
+              echo "🌐 I2P Ready: $i2p_ready"
+              echo "🎯 Both Ready: $both_ready"
+              echo "📈 Overall Readiness: $overall_percentage%"
+              
+              if [ "$both_ready" = "true" ]; then
+                echo "🎉 SUCCESS: Both Tor and I2P proxies are 100% ready!"
+                echo "🚀 Crawler can now start with full proxy support"
+                exit 0
+              else
+                if [ "$tor_ready" = "true" ]; then
+                  echo "✅ Tor proxy is ready"
+                else
+                  echo "⏳ Tor proxy still initializing..."
+                fi
+                
+                if [ "$i2p_ready" = "true" ]; then
+                  echo "✅ I2P proxy is ready"
+                else
+                  echo "⏳ I2P proxy still bootstrapping (this can take 5-15 minutes)..."
+                fi
+              fi
+            else
+              echo "⚠️  Could not reach Portal API, retrying..."
+            fi
+            
+            echo "⏰ Waiting 30 seconds before next check..."
+            sleep 30
+          done
+          
+          echo "⚠️  WARNING: Proxy readiness timeout after 30 minutes"
+          echo "🔄 Continuing anyway - crawler will handle proxy issues gracefully"
+          echo "💡 You can check proxy status at: http://portal:8080/api/proxy-status"
+      
+      # Copy real sites.txt file
+      - name: init-sites-data
+        image: ghcr.io/splinterstice/noctipede:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          echo "📋 Copying real sites.txt with all sites..."
+          cp /app/data/sites.txt /shared-data/sites.txt
+          echo "✅ Sites file copied: $(wc -l < /shared-data/sites.txt) sites"
+          echo "📝 First 5 sites:"
+          head -5 /shared-data/sites.txt
+        volumeMounts:
+        - name: shared-data
+          mountPath: /shared-data
+      
+      containers:
+      - name: noctipede-smart-crawler
+        image: ghcr.io/splinterstice/noctipede:latest
+        imagePullPolicy: Always
+        command: ["sh", "-c"]
+        args:
+        - |
+          echo "🕷️  Starting Noctipede Smart Crawler with Proxy Readiness Verification..."
+          echo "======================================================================="
+          
+          # Verify proxy readiness one more time before starting
+          echo "🔍 Final proxy readiness verification..."
+          if response=$(curl -s http://noctipede-portal-service:8080/api/proxy-readiness 2>/dev/null); then
+            echo "📊 Final Portal API Response: $response"
+            both_ready=$(echo "$response" | grep -o '"both_ready":[^,]*' | cut -d':' -f2 | tr -d ' ')
+            if [ "$both_ready" = "true" ]; then
+              echo "✅ CONFIRMED: Both proxies are ready for crawling!"
+            else
+              echo "⚠️  WARNING: Proxies may not be fully ready, but continuing..."
+            fi
+          else
+            echo "⚠️  Could not verify proxy status, continuing anyway..."
+          fi
+          
+          echo "📊 Sites to crawl: $(wc -l < /shared-data/sites.txt)"
+          cd /app
+          
+          # Initialize database first
+          echo "🗄️ Initializing database..."
+          python database/init_db.py
+          
+          # Set environment variables
+          export SITES_FILE_PATH=/shared-data/sites.txt
+          export PROXY_READINESS_CHECK=true
+          export PORTAL_API_ENDPOINT=http://noctipede-portal-service:8080
+          
+          # Create enhanced crawler wrapper that checks proxy status
+          cat > /tmp/smart_crawler_wrapper.py << 'WRAPPER_EOF'
+          import os
+          import sys
+          import time
+          import requests
+          import json
+          from datetime import datetime
+          
+          def check_proxy_status():
+              """Check proxy status via Portal API"""
+              try:
+                  portal_endpoint = os.getenv('PORTAL_API_ENDPOINT', 'http://noctipede-portal-service:8080')
+                  response = requests.get(f"{portal_endpoint}/api/proxy-readiness", timeout=10)
+                  if response.status_code == 200:
+                      data = response.json()
+                      return data
+                  else:
+                      print(f"⚠️  Portal API returned status {response.status_code}")
+                      return None
+              except Exception as e:
+                  print(f"⚠️  Error checking proxy status: {e}")
+                  return None
+          
+          def main():
+              print("🚀 Smart Crawler Wrapper Starting...")
+              print("====================================")
+              
+              # Check proxy status before starting
+              if os.getenv('PROXY_READINESS_CHECK', 'false').lower() == 'true':
+                  print("🔍 Performing pre-crawl proxy status check...")
+                  status = check_proxy_status()
+                  if status:
+                      print(f"📊 Proxy Status: {json.dumps(status, indent=2)}")
+                      if status.get('both_ready', False):
+                          print("✅ Both proxies confirmed ready - starting crawl!")
+                      else:
+                          print("⚠️  Proxies not fully ready, but continuing...")
+                  else:
+                      print("⚠️  Could not verify proxy status, continuing anyway...")
+              
+              # Import and run the main crawler
+              print("🕷️  Starting main crawler...")
+              sys.path.insert(0, '/app')
+              
+              try:
+                  from crawlers.main import main as crawler_main
+                  crawler_main()
+              except Exception as e:
+                  print(f"❌ Crawler error: {e}")
+                  sys.exit(1)
+          
+          if __name__ == "__main__":
+              main()
+          WRAPPER_EOF
+          
+          # Run the smart crawler wrapper
+          PYTHONPATH=/app python /tmp/smart_crawler_wrapper.py
+        envFrom:
+        - configMapRef:
+            name: noctipede-config
+        - secretRef:
+            name: noctipede-secrets
+        env:
+        - name: PROXY_READINESS_CHECK
+          value: "true"
+        - name: PORTAL_API_ENDPOINT
+          value: "http://noctipede-portal-service:8080"
+        volumeMounts:
+        - name: shared-data
+          mountPath: /shared-data
+        - name: output-volume
+          mountPath: /app/output
+        - name: logs-volume
+          mountPath: /app/logs
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 120  # Give more time for proxy checks
+          periodSeconds: 60
+          timeoutSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 5
+      
+      volumes:
+      - name: shared-data
+        emptyDir: {}
+      - name: output-volume
+        persistentVolumeClaim:
+          claimName: noctipede-output-pvc
+      - name: logs-volume
+        persistentVolumeClaim:
+          claimName: noctipede-logs-pvc
+
+---
+# CronJob for scheduled crawling with proxy readiness checks
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: noctipede-smart-crawler-cron
+  namespace: noctipede
+  labels:
+    app: noctipede-smart-crawler
+    component: cronjob
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          initContainers:
+          # Quick proxy readiness check for cron jobs
+          - name: quick-proxy-check
+            image: curlimages/curl:latest
+            command: ['sh', '-c']
+            args:
+            - |
+              echo "🔍 Quick proxy readiness check for scheduled crawl..."
+              if response=$(curl -s http://noctipede-portal-service:8080/api/proxy-readiness 2>/dev/null); then
+                both_ready=$(echo "$response" | grep -o '"both_ready":[^,]*' | cut -d':' -f2 | tr -d ' ')
+                if [ "$both_ready" = "true" ]; then
+                  echo "✅ Proxies ready - proceeding with scheduled crawl"
+                else
+                  echo "⚠️  Proxies not ready - scheduled crawl may have limited functionality"
+                fi
+              else
+                echo "⚠️  Could not check proxy status - proceeding anyway"
+              fi
+          
+          containers:
+          - name: noctipede-crawler
+            image: ghcr.io/splinterstice/noctipede:latest
+            imagePullPolicy: Always
+            command: ["sh", "-c"]
+            args:
+            - |
+              echo "🕷️  Starting scheduled Noctipede crawl..."
+              cd /app
+              python database/init_db.py
+              PYTHONPATH=/app python -m crawlers.main
+            envFrom:
+            - configMapRef:
+                name: noctipede-config
+            - secretRef:
+                name: noctipede-secrets
+            resources:
+              requests:
+                cpu: 500m
+                memory: 1Gi
+              limits:
+                cpu: 2000m
+                memory: 4Gi

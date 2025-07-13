@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-noctipede-bucket
+  namespace: noctipede
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: mc
+        image: minio/mc:latest
+        env:
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-secrets
+              key: MINIO_ACCESS_KEY
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-secrets
+              key: MINIO_SECRET_KEY
+        command:
+        - /bin/sh
+        - -c
+        - |
+          sleep 30
+          mc alias set minio http://minio-crawler-hl.noctipede:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY
+          mc mb minio/noctipede-data --ignore-existing
+          mc policy set public minio/noctipede-data
+          echo "Bucket created successfully"

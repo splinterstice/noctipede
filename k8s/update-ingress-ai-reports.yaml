@@ -1,0 +1,80 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: noctipede-https
+  namespace: noctipede
+  labels:
+    app: noctipede-portal
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    cert-manager.io/cluster-issuer: ca-issuer
+spec:
+  ingressClassName: traefik
+  tls:
+  - hosts:
+    - noctipede.splinterstice.celestium.life
+    secretName: noctipede-cert
+  rules:
+  - host: noctipede.splinterstice.celestium.life
+    http:
+      paths:
+      # AI Reports routes - route to noctipede-app-service
+      - path: /ai-reports-advanced
+        pathType: Exact
+        backend:
+          service:
+            name: noctipede-app-service
+            port:
+              number: 8080
+      - path: /ai-reports
+        pathType: Exact
+        backend:
+          service:
+            name: noctipede-app-service
+            port:
+              number: 8080
+      - path: /api/ai-reports
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-app-service
+            port:
+              number: 8080
+      # Other API routes
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-app-service
+            port:
+              number: 8080
+      - path: /favicon.ico
+        pathType: Exact
+        backend:
+          service:
+            name: noctipede-app-service
+            port:
+              number: 8080
+      # Static files
+      - path: /static
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-app-service
+            port:
+              number: 8080
+      - path: /output
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-app-service
+            port:
+              number: 8080
+      # Default route to portal
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-portal-service
+            port:
+              number: 8080

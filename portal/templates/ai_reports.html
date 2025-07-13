@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Reports - Noctipede</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .container {
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .query-form {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            margin-bottom: 30px;
+        }
+
+        .query-input {
+            border-radius: 10px;
+            border: 2px solid #e0e0e0;
+            padding: 15px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .query-input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+
+        .submit-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 10px;
+            padding: 15px 30px;
+            color: white;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.6;
+            transform: none;
+        }
+
+        .results-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            display: none;
+        }
+
+        .loading-spinner {
+            text-align: center;
+            padding: 50px;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+
+        .ai-response {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 12px;
+            padding: 25px;
+            margin: 15px 0;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .markdown-content h1 {
+            color: #007bff;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        .markdown-content h2 {
+            color: #0056b3;
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+
+        .markdown-content h3 {
+            color: #495057;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        .markdown-content ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+
+        .markdown-content li {
+            margin: 5px 0;
+            list-style-type: disc;
+        }
+
+        .markdown-content code {
+            background: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .markdown-content strong {
+            font-weight: 600;
+            color: #212529;
+        }
+
+        .markdown-content p {
+            margin: 10px 0;
+            line-height: 1.6;
+        }
+
+        .structured-data-section {
+            border-top: 2px solid #007bff;
+            padding-top: 20px;
+        }
+
+        .structured-data-section .card {
+            border: 1px solid #dee2e6;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .structured-data-section .progress {
+            border-radius: 15px;
+        }
+
+        .structured-data-section .progress-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 500;
+            font-size: 0.9em;
+        }
+
+        .structured-data-section .badge {
+            font-size: 0.8em;
+            margin-right: 5px;
+        }
+
+        .structured-data-section .table-sm td {
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-brain"></i> AI Reports</h1>
+            <p class="lead">Natural Language Query Interface for Crawled Data</p>
+        </div>
+
+        <div class="query-form">
+            <form id="queryForm">
+                <div class="mb-3">
+                    <label for="queryInput" class="form-label">
+                        <i class="fas fa-question-circle"></i> Ask a question about your crawled data
+                    </label>
+                    <textarea 
+                        class="form-control query-input" 
+                        id="queryInput" 
+                        rows="3" 
+                        placeholder="e.g., Generate an overview of all crawled data, Show me network analysis, What media has been flagged?"
+                        required></textarea>
+                </div>
+                <div class="text-center">
+                    <button type="submit" class="btn submit-btn" id="submitBtn">
+                        <span id="submitText">
+                            <i class="fas fa-search"></i> Generate Report
+                        </span>
+                        <span id="loadingText" style="display: none;">
+                            <i class="fas fa-spinner fa-spin"></i> Processing...
+                        </span>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div id="welcomeMessage" class="text-center text-white">
+            <h3><i class="fas fa-lightbulb"></i> Welcome to AI Reports</h3>
+            <p>Ask natural language questions about your crawled data and get comprehensive AI-powered reports.</p>
+            <div class="row mt-4">
+                <div class="col-md-4">
+                    <div class="card bg-transparent border-light text-white">
+                        <div class="card-body">
+                            <h5><i class="fas fa-globe"></i> Network Analysis</h5>
+                            <p>Analyze Tor, I2P, and clearnet data</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-transparent border-light text-white">
+                        <div class="card-body">
+                            <h5><i class="fas fa-chart-bar"></i> Statistics</h5>
+                            <p>Get detailed metrics and insights</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-transparent border-light text-white">
+                        <div class="card-body">
+                            <h5><i class="fas fa-shield-alt"></i> Security</h5>
+                            <p>Content moderation and analysis</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="errorContainer" style="display: none;"></div>
+        <div id="resultsContainer" class="results-container"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        class AIReports {
+            constructor() {
+                this.init();
+            }
+
+            init() {
+                this.bindEvents();
+            }
+
+            bindEvents() {
+                document.getElementById('queryForm').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.submitQuery();
+                });
+            }
+
+            async submitQuery() {
+                const query = document.getElementById('queryInput').value.trim();
+                
+                if (!query) {
+                    this.showError('Please enter a query');
+                    return;
+                }
+
+                try {
+                    this.showLoading();
+                    this.setSubmitButtonState(true);
+
+                    const response = await fetch('/api/ai-reports/query', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            query: query,
+                            context: 'User query from AI Reports interface'
+                        })
+                    });
+
+                    const result = await response.json();
+
+                    // Handle the ACTUAL API response format
+                    if (result.success) {
+                        this.displayResults(result);
+                    } else {
+                        this.showError(result.error || 'Failed to process query');
+                    }
+
+                } catch (error) {
+                    console.error('Error submitting query:', error);
+                    this.showError('Network error. Please try again.');
+                } finally {
+                    this.setSubmitButtonState(false);
+                }
+            }
+
+            displayResults(result) {
+                const container = document.getElementById('resultsContainer');
+                container.innerHTML = '';
+
+                // Show markdown response
+                if (result.response && typeof result.response === 'string') {
+                    const responseDiv = document.createElement('div');
+                    responseDiv.className = 'ai-response';
+                    responseDiv.innerHTML = `
+                        <div class="markdown-content">
+                            ${this.renderMarkdown(result.response)}
+                        </div>
+                    `;
+                    container.appendChild(responseDiv);
+                }
+
+                // Show structured data if available
+                if (result.data) {
+                    const structuredDiv = document.createElement('div');
+                    structuredDiv.innerHTML = this.renderStructuredData(result.data);
+                    container.appendChild(structuredDiv);
+                }
+
+                // Show the results container
+                document.getElementById('welcomeMessage').style.display = 'none';
+                document.getElementById('errorContainer').style.display = 'none';
+                container.style.display = 'block';
+            }
+
+            renderMarkdown(markdown) {
+                return markdown
+                    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+                    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+                    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+                    .replace(/^\* (.*$)/gim, '<li>$1</li>')
+                    .replace(/^\- (.*$)/gim, '<li>$1</li>')
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\n/g, '<br>');
+            }
+
+            renderStructuredData(data) {
+                let html = `
+                    <div class="structured-data-section mt-4">
+                        <h5 class="text-primary mb-3">
+                            <i class="fas fa-chart-bar"></i> Interactive Data View
+                        </h5>
+                `;
+
+                // Render statistics if available
+                if (data.stats) {
+                    html += this.renderStatsCards(data.stats);
+                }
+
+                // Render network distribution if available
+                if (data.networks) {
+                    html += this.renderNetworkChart(data.networks);
+                }
+
+                // Render recent sites table if available
+                if (data.recent_sites && data.recent_sites.length > 0) {
+                    html += this.renderRecentSitesTable(data.recent_sites);
+                }
+
+                html += `</div>`;
+                return html;
+            }
+
+            renderStatsCards(stats) {
+                return `
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <div class="card bg-primary text-white">
+                                <div class="card-body text-center">
+                                    <h3>${stats.sites?.toLocaleString() || 0}</h3>
+                                    <p class="mb-0">Total Sites</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-success text-white">
+                                <div class="card-body text-center">
+                                    <h3>${stats.pages?.toLocaleString() || 0}</h3>
+                                    <p class="mb-0">Total Pages</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-info text-white">
+                                <div class="card-body text-center">
+                                    <h3>${stats.media?.toLocaleString() || 0}</h3>
+                                    <p class="mb-0">Media Files</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-warning text-white">
+                                <div class="card-body text-center">
+                                    <h3>${stats.flagged_media?.toLocaleString() || 0}</h3>
+                                    <p class="mb-0">Flagged Media</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            renderNetworkChart(networks) {
+                const total = (networks.clearnet || 0) + (networks.tor || 0) + (networks.i2p || 0);
+                const clearnetPct = total > 0 ? ((networks.clearnet || 0) / total * 100).toFixed(1) : 0;
+                const torPct = total > 0 ? ((networks.tor || 0) / total * 100).toFixed(1) : 0;
+                const i2pPct = total > 0 ? ((networks.i2p || 0) / total * 100).toFixed(1) : 0;
+
+                return `
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h6 class="mb-0"><i class="fas fa-network-wired"></i> Network Distribution</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <div class="progress mb-2" style="height: 30px;">
+                                        <div class="progress-bar bg-primary" role="progressbar" style="width: ${clearnetPct}%" 
+                                             title="Clearnet: ${networks.clearnet || 0} sites (${clearnetPct}%)">
+                                            Clearnet: ${networks.clearnet || 0}
+                                        </div>
+                                        <div class="progress-bar bg-dark" role="progressbar" style="width: ${torPct}%" 
+                                             title="Tor: ${networks.tor || 0} sites (${torPct}%)">
+                                            Tor: ${networks.tor || 0}
+                                        </div>
+                                        <div class="progress-bar bg-secondary" role="progressbar" style="width: ${i2pPct}%" 
+                                             title="I2P: ${networks.i2p || 0} sites (${i2pPct}%)">
+                                            I2P: ${networks.i2p || 0}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="d-flex flex-column">
+                                        <small><span class="badge bg-primary">🌍</span> Clearnet: ${networks.clearnet || 0} (${clearnetPct}%)</small>
+                                        <small><span class="badge bg-dark">🧅</span> Tor: ${networks.tor || 0} (${torPct}%)</small>
+                                        <small><span class="badge bg-secondary">🌐</span> I2P: ${networks.i2p || 0} (${i2pPct}%)</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            renderRecentSitesTable(recentSites) {
+                let html = `
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h6 class="mb-0"><i class="fas fa-clock"></i> Recent Activity</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Network</th>
+                                            <th>URL</th>
+                                            <th>Pages</th>
+                                            <th>Last Crawled</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                `;
+
+                recentSites.slice(0, 10).forEach(site => {
+                    const networkIcon = site.network_type === 'tor' ? '🧅' : 
+                                       site.network_type === 'i2p' ? '🌐' : '🌍';
+                    const networkBadge = site.network_type === 'tor' ? 'bg-dark' : 
+                                        site.network_type === 'i2p' ? 'bg-secondary' : 'bg-primary';
+                    
+                    const lastCrawled = new Date(site.last_crawled).toLocaleString();
+                    const shortUrl = site.url.length > 50 ? site.url.substring(0, 50) + '...' : site.url;
+                    
+                    html += `
+                        <tr>
+                            <td><span class="badge ${networkBadge}">${networkIcon} ${site.network_type.toUpperCase()}</span></td>
+                            <td><small title="${site.url}">${this.escapeHtml(shortUrl)}</small></td>
+                            <td><span class="badge bg-info">${site.page_count || 0}</span></td>
+                            <td><small>${lastCrawled}</small></td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                return html;
+            }
+
+            escapeHtml(text) {
+                const map = {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#039;'
+                };
+                return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+            }
+
+            showLoading() {
+                document.getElementById('welcomeMessage').style.display = 'none';
+                document.getElementById('errorContainer').style.display = 'none';
+                document.getElementById('resultsContainer').style.display = 'none';
+                
+                const loadingDiv = document.createElement('div');
+                loadingDiv.id = 'loadingContainer';
+                loadingDiv.className = 'results-container';
+                loadingDiv.style.display = 'block';
+                loadingDiv.innerHTML = `
+                    <div class="loading-spinner">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-3">Processing your query...</p>
+                    </div>
+                `;
+                
+                // Remove existing loading container if any
+                const existingLoading = document.getElementById('loadingContainer');
+                if (existingLoading) {
+                    existingLoading.remove();
+                }
+                
+                document.querySelector('.container').appendChild(loadingDiv);
+            }
+
+            showError(message) {
+                document.getElementById('welcomeMessage').style.display = 'none';
+                document.getElementById('resultsContainer').style.display = 'none';
+                
+                // Remove loading container
+                const loadingContainer = document.getElementById('loadingContainer');
+                if (loadingContainer) {
+                    loadingContainer.remove();
+                }
+                
+                const errorContainer = document.getElementById('errorContainer');
+                errorContainer.innerHTML = `
+                    <div class="error-message">
+                        <i class="fas fa-exclamation-triangle"></i> ${message}
+                    </div>
+                `;
+                errorContainer.style.display = 'block';
+            }
+
+            setSubmitButtonState(loading) {
+                const button = document.getElementById('submitBtn');
+                const submitText = document.getElementById('submitText');
+                const loadingText = document.getElementById('loadingText');
+                
+                button.disabled = loading;
+                submitText.style.display = loading ? 'none' : 'inline';
+                loadingText.style.display = loading ? 'inline' : 'none';
+            }
+        }
+
+        // Initialize the AI Reports interface
+        document.addEventListener('DOMContentLoaded', function() {
+            new AIReports();
+        });
+    </script>
+</body>
+</html>

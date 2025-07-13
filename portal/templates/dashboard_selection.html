@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .container {
+            max-width: 800px;
+            padding: 40px;
+            text-align: center;
+        }
+        
+        .header {
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+            margin-bottom: 30px;
+        }
+        
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+        
+        .dashboard-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 30px 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+        
+        .dashboard-card:hover {
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        
+        .dashboard-card h3 {
+            font-size: 1.5em;
+            margin-bottom: 15px;
+            color: #FFD700;
+        }
+        
+        .dashboard-card p {
+            opacity: 0.8;
+            line-height: 1.5;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #4CAF50;
+            margin-right: 8px;
+        }
+        
+        .performance-note {
+            margin-top: 40px;
+            padding: 20px;
+            background: rgba(76, 175, 80, 0.1);
+            border-radius: 10px;
+            border-left: 4px solid #4CAF50;
+        }
+        
+        .performance-note h4 {
+            color: #4CAF50;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🕷️ Noctipede Portal</h1>
+            <p>Deep Web Analysis System - Choose Your Dashboard</p>
+        </div>
+        
+        <div class="dashboard-grid">
+            <a href="/basic" class="dashboard-card">
+                <h3><span class="status-indicator"></span>Basic Dashboard</h3>
+                <p>Essential metrics and crawler statistics. Clean, fast interface with core functionality.</p>
+            </a>
+            
+            <a href="/enhanced" class="dashboard-card">
+                <h3><span class="status-indicator"></span>Enhanced Dashboard</h3>
+                <p>Advanced system monitoring with detailed performance metrics and resource usage.</p>
+            </a>
+            
+            <a href="/combined" class="dashboard-card">
+                <h3><span class="status-indicator"></span>Combined Dashboard</h3>
+                <p>Comprehensive view combining basic and enhanced features in a unified interface.</p>
+            </a>
+            
+            <a href="/ai-reports" class="dashboard-card">
+                <h3><span class="status-indicator"></span>AI Reports</h3>
+                <p>AI-powered data analysis with natural language querying and advanced reporting tools.</p>
+            </a>
+        </div>
+        
+        <div class="performance-note">
+            <h4>🚀 Performance Optimized</h4>
+            <p>All dashboards now feature sub-millisecond response times with comprehensive caching and early-exit optimizations.</p>
+        </div>
+    </div>
+</body>
+</html>

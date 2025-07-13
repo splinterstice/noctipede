@@ -1,0 +1,256 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noctipede-app
+  namespace: noctipede
+  labels:
+    app: noctipede-app
+    component: crawler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noctipede-app
+      component: crawler
+  template:
+    metadata:
+      labels:
+        app: noctipede-app
+        component: crawler
+    spec:
+      initContainers:
+      # Wait for database to be ready
+      - name: wait-for-database
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for MariaDB to be ready..."
+          until nc -z mariadb.mariadb-service 3306; do
+            echo "⏳ MariaDB not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ MariaDB is ready!"
+      
+      # Wait for Tor proxy to be ready
+      - name: wait-for-tor
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🧅 Waiting for Tor proxy to be ready..."
+          for attempt in $(seq 1 12); do
+            echo "Tor test attempt $attempt/12..."
+            if nc -z tor-proxy 9150; then
+              echo "✅ Tor proxy is ready!"
+              exit 0
+            fi
+            echo "⏳ Waiting for Tor proxy..."
+            sleep 10
+          done
+          echo "⚠️ Tor proxy not ready after 2 minutes, continuing anyway..."
+      
+      # Wait for I2P proxy (with timeout)
+      - name: wait-for-i2p
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🌐 Waiting for I2P proxy to be ready..."
+          for attempt in $(seq 1 6); do
+            echo "I2P test attempt $attempt/6..."
+            if nc -z i2p-proxy 4444; then
+              echo "✅ I2P proxy is ready!"
+              exit 0
+            fi
+            echo "⏳ Waiting for I2P proxy..."
+            sleep 15
+          done
+          echo "⚠️ I2P proxy not ready after 90 seconds (normal - I2P takes time to bootstrap)"
+          echo "🔄 Continuing - crawler will handle I2P gracefully"
+      
+      # Copy real sites.txt file
+      - name: init-sites-data
+        image: ghcr.io/splinterstice/noctipede:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          echo "📋 Copying real sites.txt with all 47 sites..."
+          cp /app/data/sites.txt /shared-data/sites.txt
+          echo "✅ Sites file copied: $(wc -l < /shared-data/sites.txt) sites"
+          head -5 /shared-data/sites.txt
+        volumeMounts:
+        - name: shared-data
+          mountPath: /shared-data
+      
+      containers:
+      - name: noctipede-app
+        image: ghcr.io/splinterstice/noctipede:latest
+        imagePullPolicy: Always
+        command: ["sh", "-c"]
+        args:
+        - |
+          echo "🚀 Starting Noctipede Crawler..."
+          echo "📊 Sites to crawl: $(wc -l < /shared-data/sites.txt)"
+          cd /app
+          
+          # Initialize database first
+          echo "🗄️ Initializing database..."
+          python database/init_db.py
+          
+          export SITES_FILE_PATH=/shared-data/sites.txt
+          PYTHONPATH=/app python -m crawlers.main
+        env:
+        # Override Kubernetes service discovery environment variables
+        - name: MARIADB_PORT
+          value: "3306"
+        - name: TOR_PROXY_PORT
+          value: "9150"
+        - name: I2P_PROXY_PORT
+          value: "4444"
+        - name: I2P_PROXY_HOST
+          value: "i2p-proxy"
+        - name: TOR_PROXY_HOST
+          value: "tor-proxy"
+        - name: MARIADB_HOST
+          value: "mariadb.mariadb-service"
+        envFrom:
+        - configMapRef:
+            name: noctipede-config
+        - secretRef:
+            name: noctipede-secrets
+        volumeMounts:
+        - name: shared-data
+          mountPath: /shared-data
+        - name: output-volume
+          mountPath: /app/output
+        - name: logs-volume
+          mountPath: /app/logs
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+      
+      volumes:
+      - name: shared-data
+        emptyDir: {}
+      - name: output-volume
+        persistentVolumeClaim:
+          claimName: noctipede-output-pvc
+      - name: logs-volume
+        persistentVolumeClaim:
+          claimName: noctipede-logs-pvc
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: noctipede-portal
+  namespace: noctipede
+  labels:
+    app: noctipede-portal
+    component: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: noctipede-portal
+      component: web
+  template:
+    metadata:
+      labels:
+        app: noctipede-portal
+        component: web
+    spec:
+      initContainers:
+      # Wait for database to be ready
+      - name: wait-for-database
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "🔍 Waiting for MariaDB to be ready..."
+          until nc -z mariadb.mariadb-service 3306; do
+            echo "⏳ MariaDB not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ MariaDB is ready!"
+      
+      containers:
+      - name: noctipede-portal
+        image: ghcr.io/splinterstice/noctipede:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        command: ["sh", "-c"]
+        args:
+        - |
+          echo "🌐 Starting Noctipede Unified Portal..."
+          echo "📊 Available dashboards: /basic, /enhanced, /combined"
+          cd /app
+          mkdir -p /tmp/output /tmp/logs
+          export OUTPUT_DIR=/tmp/output
+          PYTHONPATH=/app python -m portal.unified_portal
+        env:
+        # Override Kubernetes service discovery environment variables
+        - name: MARIADB_PORT
+          value: "3306"
+        - name: TOR_PROXY_PORT
+          value: "9150"
+        - name: I2P_PROXY_PORT
+          value: "4444"
+        - name: I2P_PROXY_HOST
+          value: "i2p-proxy"
+        - name: TOR_PROXY_HOST
+          value: "tor-proxy"
+        - name: MARIADB_HOST
+          value: "mariadb.mariadb-service"
+        envFrom:
+        - configMapRef:
+            name: noctipede-config
+        - secretRef:
+            name: noctipede-secrets
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
