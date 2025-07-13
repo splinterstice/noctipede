@@ -902,3 +902,279 @@ EOF
     kubectl apply -f /tmp/eks-noctipede-app.yaml
     print_status "Noctipede application deployed"
 }
+
+# Function to deploy EKS-optimized ingress
+deploy_eks_ingress() {
+    print_info "Deploying EKS Application Load Balancer..."
+    
+    cat > /tmp/eks-ingress.yaml << 'EOF'
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: noctipede-ingress
+  namespace: noctipede
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/certificate-arn: "${SSL_CERT_ARN}"
+    alb.ingress.kubernetes.io/healthcheck-path: /api/health
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: '30'
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: '10'
+    alb.ingress.kubernetes.io/healthy-threshold-count: '2'
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: '3'
+spec:
+  rules:
+  - host: "${DOMAIN_NAME:-noctipede.example.com}"
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: noctipede-app-service
+            port:
+              number: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: noctipede-nlb
+  namespace: noctipede
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: noctipede-app
+EOF
+    
+    kubectl apply -f /tmp/eks-ingress.yaml
+    print_status "EKS ingress deployed"
+}
+
+# Function to verify sites file
+verify_sites_file() {
+    print_info "Verifying sites file..."
+    
+    kubectl run verify-sites --image=busybox:1.35 --restart=Never -n noctipede --overrides='{
+      "spec": {
+        "containers": [
+          {
+            "name": "verify-sites",
+            "image": "busybox:1.35",
+            "command": ["sh", "-c", "echo \"📋 Checking sites.txt file...\" && if [ -f /nfs-sites/sites.txt ]; then echo \"✅ Found sites.txt with $(wc -l < /nfs-sites/sites.txt) sites\"; else echo \"❌ sites.txt not found, creating default...\" && echo \"http://walker.i2p/\nhttp://3ch.i2p/\nhttp://10channel.i2p/\nhttp://bitchan.i2p/\nhttp://l7jqnz3yfe2wtwietafoieadmgqbu7dcmzmey63ktbjtxal3he4a.b32.i2p/\nhttp://reg.i2p/\nhttp://notbob.i2p/\nhttp://purokishi.i2p/\nhttp://facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion/\" > /nfs-sites/sites.txt && echo \"✅ Created sites.txt with $(wc -l < /nfs-sites/sites.txt) sites\"; fi"],
+            "volumeMounts": [
+              {
+                "name": "sites-volume",
+                "mountPath": "/nfs-sites"
+              }
+            ]
+          }
+        ],
+        "volumes": [
+          {
+            "name": "sites-volume",
+            "persistentVolumeClaim": {
+              "claimName": "noctipede-sites-pvc"
+            }
+          }
+        ]
+      }
+    }'
+    
+    kubectl wait --for=condition=complete pod/verify-sites -n noctipede --timeout=60s || print_warning "Sites verification timed out"
+    kubectl logs verify-sites -n noctipede || echo "Could not get verification logs"
+    kubectl delete pod verify-sites -n noctipede --ignore-not-found=true
+    print_status "Sites file verified"
+}
+
+# Function to perform readiness check
+perform_readiness_check() {
+    print_info "Performing comprehensive readiness check..."
+    
+    # Wait for metrics to stabilize
+    sleep 30
+    
+    # Test readiness endpoint
+    READINESS_ATTEMPTS=0
+    MAX_ATTEMPTS=12
+    READY=false
+    
+    while [ $READINESS_ATTEMPTS -lt $MAX_ATTEMPTS ]; do
+        if kubectl run readiness-test --image=curlimages/curl --rm -it --restart=Never -n noctipede --timeout=30s -- \
+           curl -s http://noctipede-app-service:8080/api/readiness | grep -q '"ready_for_crawling":true'; then
+            READY=true
+            print_status "System is ready for crawling!"
+            break
+        else
+            READINESS_ATTEMPTS=$((READINESS_ATTEMPTS + 1))
+            print_warning "System not ready yet (attempt $READINESS_ATTEMPTS/$MAX_ATTEMPTS), waiting 30s..."
+            sleep 30
+        fi
+    done
+    
+    if [ "$READY" = "true" ]; then
+        print_status "🎯 COMPREHENSIVE READINESS CHECK PASSED!"
+    else
+        print_warning "⚠️ READINESS CHECK INCOMPLETE - System may not be fully ready"
+    fi
+}
+
+# Function to display EKS access information
+display_eks_access_info() {
+    print_info "Gathering EKS access information..."
+    
+    # Get Load Balancer URLs
+    ALB_URL=$(kubectl get ingress noctipede-ingress -n noctipede -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "Pending...")
+    NLB_URL=$(kubectl get service noctipede-nlb -n noctipede -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "Pending...")
+    MINIO_URL=$(kubectl get service minio-console -n noctipede -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "Pending...")
+    
+    echo ""
+    echo "🎉 EKS DEPLOYMENT COMPLETED SUCCESSFULLY!"
+    echo "========================================"
+    echo ""
+    print_status "All services are running on EKS cluster: $CLUSTER_NAME"
+    echo ""
+    echo "📋 EKS ACCESS INFORMATION:"
+    echo "========================="
+    echo "🌐 Application Load Balancer: https://$ALB_URL"
+    echo "🔗 Network Load Balancer: http://$NLB_URL"
+    echo "📦 MinIO Console: http://$MINIO_URL:9001"
+    echo "🏷️  EKS Cluster: $CLUSTER_NAME"
+    echo "🌍 AWS Region: $REGION"
+    echo ""
+    echo "🔧 EKS-SPECIFIC COMMANDS:"
+    echo "========================"
+    echo "• Update kubeconfig: aws eks update-kubeconfig --region $REGION --name $CLUSTER_NAME"
+    echo "• Check all pods: kubectl get pods -n noctipede"
+    echo "• Check services: kubectl get services -n noctipede"
+    echo "• Check ingress: kubectl get ingress -n noctipede"
+    echo "• View app logs: kubectl logs -l app=noctipede-app -n noctipede"
+    echo "• Port forward: kubectl port-forward service/noctipede-app-service 8080:8080 -n noctipede"
+    echo "• Scale deployment: kubectl scale deployment noctipede-app --replicas=3 -n noctipede"
+    echo ""
+    echo "🔍 MONITORING COMMANDS:"
+    echo "======================"
+    echo "• Check node status: kubectl get nodes"
+    echo "• Check PVC status: kubectl get pvc -n noctipede"
+    echo "• Check events: kubectl get events -n noctipede --sort-by='.lastTimestamp'"
+    echo "• Describe pods: kubectl describe pods -l app=noctipede-app -n noctipede"
+    echo ""
+    print_info "EKS deployment script completed successfully!"
+}
+
+# Function to check deployment status
+check_deployment_status() {
+    print_info "Checking EKS deployment status..."
+    
+    echo ""
+    echo "📊 DEPLOYMENT STATUS"
+    echo "==================="
+    
+    # Check namespace
+    if kubectl get namespace noctipede &> /dev/null; then
+        print_status "Namespace: noctipede exists"
+    else
+        print_error "Namespace: noctipede not found"
+    fi
+    
+    # Check pods
+    echo ""
+    echo "🔍 Pod Status:"
+    kubectl get pods -n noctipede -o wide
+    
+    # Check services
+    echo ""
+    echo "🌐 Service Status:"
+    kubectl get services -n noctipede
+    
+    # Check ingress
+    echo ""
+    echo "🔗 Ingress Status:"
+    kubectl get ingress -n noctipede
+    
+    # Check PVCs
+    echo ""
+    echo "💾 Storage Status:"
+    kubectl get pvc -n noctipede
+    
+    # Check recent events
+    echo ""
+    echo "📋 Recent Events:"
+    kubectl get events -n noctipede --sort-by='.lastTimestamp' | tail -10
+    
+    # Test application health
+    echo ""
+    echo "🏥 Health Check:"
+    if kubectl run health-check --image=curlimages/curl --rm -it --restart=Never -n noctipede --timeout=30s -- \
+       curl -f http://noctipede-app-service:8080/api/health &> /dev/null; then
+        print_status "Application health check passed"
+    else
+        print_warning "Application health check failed"
+    fi
+}
+
+# Function to cleanup deployment
+cleanup_deployment() {
+    print_warning "Starting cleanup of EKS deployment..."
+    
+    echo "This will delete all Noctipede resources from the EKS cluster."
+    read -p "Are you sure you want to continue? (y/N): " -n 1 -r
+    echo
+    
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        print_info "Cleaning up Noctipede deployment..."
+        
+        # Delete ingress first
+        kubectl delete ingress --all -n noctipede --ignore-not-found=true
+        
+        # Delete services
+        kubectl delete services --all -n noctipede --ignore-not-found=true
+        
+        # Delete deployments
+        kubectl delete deployments --all -n noctipede --ignore-not-found=true
+        
+        # Delete jobs
+        kubectl delete jobs --all -n noctipede --ignore-not-found=true
+        
+        # Delete configmaps and secrets
+        kubectl delete configmaps --all -n noctipede --ignore-not-found=true
+        kubectl delete secrets --all -n noctipede --ignore-not-found=true
+        
+        # Delete PVCs (this will also delete the data!)
+        print_warning "Deleting PVCs - this will permanently delete all data!"
+        kubectl delete pvc --all -n noctipede --ignore-not-found=true
+        
+        # Delete namespace
+        kubectl delete namespace noctipede --ignore-not-found=true
+        
+        print_status "Cleanup completed"
+    else
+        print_info "Cleanup cancelled"
+    fi
+}
+
+# Function to cleanup temporary files
+cleanup_temp_files() {
+    print_info "Cleaning up temporary files..."
+    rm -f /tmp/eks-*.yaml
+    print_status "Temporary files cleaned up"
+}
+
+# Main execution
+main() {
+    handle_arguments "$@"
+}
+
+# Run main function with all arguments
+main "$@"
+}

@@ -1,0 +1,159 @@
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                           NOCTIPEDE DEEP WEB ANALYSIS SYSTEM                            │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+
+                                    ┌─────────────────┐
+                                    │   EXTERNAL AI   │
+                                    │  OLLAMA SERVICE │
+                                    │                 │
+                                    │ • llama3.2-vis  │
+                                    │ • gemma3:12b    │
+                                    │ • llama3.1:8b   │
+                                    └─────────┬───────┘
+                                              │
+                                              │ AI Analysis
+                                              ▼
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                NOCTIPEDE CORE SYSTEM                                    │
+│                                                                                         │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐                   │
+│  │   TOR PROXY     │    │   I2P PROXY     │    │  CLEARNET       │                   │
+│  │   SOCKS5:9050   │    │   HTTP:4444     │    │  DIRECT         │                   │
+│  │                 │    │                 │    │                 │                   │
+│  │ .onion sites    │    │ .i2p sites      │    │ standard web    │                   │
+│  └─────────┬───────┘    └─────────┬───────┘    └─────────┬───────┘                   │
+│            │                      │                      │                           │
+│            └──────────────────────┼──────────────────────┘                           │
+│                                   │                                                  │
+│                                   ▼                                                  │
+│  ┌─────────────────────────────────────────────────────────────────────────────────┐ │
+│  │                        MULTI-NETWORK CRAWLERS                                  │ │
+│  │                                                                                 │ │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │ │
+│  │  │ Tor Crawler │  │ I2P Crawler │  │ Web Crawler │  │ Deep Crawler│          │ │
+│  │  │             │  │             │  │             │  │             │          │ │
+│  │  │ • .onion    │  │ • .i2p      │  │ • http/s    │  │ • Advanced  │          │ │
+│  │  │ • SOCKS5    │  │ • HTTP Prxy │  │ • Direct    │  │ • Multi-hop │          │ │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘          │ │
+│  └─────────────────────────────────┬───────────────────────────────────────────────┘ │
+│                                    │                                                 │
+│                                    ▼                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────────────┐ │
+│  │                           DATA PROCESSING LAYER                                │ │
+│  │                                                                                 │ │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │ │
+│  │  │   Content   │  │   Image     │  │ Screenshot  │  │  MemeCLIP   │          │ │
+│  │  │  Analysis   │  │  Analysis   │  │  Capture    │  │ Integration │          │ │
+│  │  │             │  │             │  │             │  │             │          │ │
+│  │  │ • AI Models │  │ • WebP/PNG  │  │ • Selenium  │  │ • Meme Det. │          │ │
+│  │  │ • Moderation│  │ • Vision AI │  │ • Headless  │  │ • Similarity│          │ │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘          │ │
+│  └─────────────────────────────────┬───────────────────────────────────────────────┘ │
+│                                    │                                                 │
+│                                    ▼                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────────────┐ │
+│  │                            STORAGE LAYER                                       │ │
+│  │                                                                                 │ │
+│  │  ┌─────────────────────────┐              ┌─────────────────────────┐          │ │
+│  │  │       MariaDB           │              │        MinIO            │          │ │
+│  │  │   Database Storage      │              │   Object Storage        │          │ │
+│  │  │                         │              │                         │          │ │
+│  │  │ • Sites & Pages         │              │ • Images & Media        │          │ │
+│  │  │ • Crawl Metadata        │              │ • Screenshots           │          │ │
+│  │  │ • Analysis Results      │              │ • HIVE Datasets         │          │ │
+│  │  │ • AI Reports Tables     │              │ • Parquet Files         │          │ │
+│  │  └─────────────────────────┘              └─────────────────────────┘          │ │
+│  └─────────────────────────────────┬───────────────────────────────────────────────┘ │
+│                                    │                                                 │
+│                                    ▼                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────────────┐ │
+│  │                          AI REPORTS ENGINE                                     │ │
+│  │                                                                                 │ │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │ │
+│  │  │  Dataset    │  │   Query     │  │   Report    │  │    HIVE     │          │ │
+│  │  │  Manager    │  │   Engine    │  │ Generator   │  │  Exporter   │          │ │
+│  │  │             │  │             │  │             │  │             │          │ │
+│  │  │ • CRUD Ops  │  │ • SQL Iface │  │ • AI Reports│  │ • Parquet   │          │ │
+│  │  │ • Partition │  │ • Athena-like│  │ • Templates │  │ • Big Data  │          │ │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘          │ │
+│  └─────────────────────────────────┬───────────────────────────────────────────────┘ │
+│                                    │                                                 │
+│                                    ▼                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────────────┐ │
+│  │                           WEB PORTAL LAYER                                     │ │
+│  │                                                                                 │ │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │ │
+│  │  │   Basic     │  │  Enhanced   │  │  Combined   │  │ AI Reports  │          │ │
+│  │  │ Dashboard   │  │ Dashboard   │  │ Dashboard   │  │ Interface   │          │ │
+│  │  │             │  │             │  │             │  │             │          │ │
+│  │  │ • Metrics   │  │ • Sys Mon   │  │ • All Views │  │ • SQL Query │          │ │
+│  │  │ • Stats     │  │ • Resources │  │ • Unified   │  │ • MemeCLIP  │          │ │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘          │ │
+│  └─────────────────────────────────┬───────────────────────────────────────────────┘ │
+└────────────────────────────────────┼─────────────────────────────────────────────────┘
+                                     │
+                                     │ HTTPS/Web Interface
+                                     │ Port 8080
+                                     ▼
+                    ┌─────────────────────────────────────┐
+                    │          WEB BROWSER                │
+                    │                                     │
+                    │  https://noctipede.splinterstice.   │
+                    │         celestium.life/             │
+                    │                                     │
+                    │  ┌─────────────────────────────────┐│
+                    │  │    CRAWLER FRONTEND VIEW        ││
+                    │  │                                 ││
+                    │  │  • Live Metrics Dashboard       ││
+                    │  │  • Real-time Crawl Status       ││
+                    │  │  • Network Breakdown            ││
+                    │  │  • Site Statistics              ││
+                    │  │  • AI Analysis Results          ││
+                    │  │  • Query Interface              ││
+                    │  │  • Report Generation            ││
+                    │  └─────────────────────────────────┘│
+                    └─────────────────────────────────────┘
+                                     ▲
+                                     │
+                              ┌──────┴──────┐
+                              │             │
+                              │  ★ ★ ★ ★ ★  │
+                              │             │
+                              │ YOU ARE     │
+                              │ FUCKING     │
+                              │ HERE! ◄──── │
+                              │             │
+                              │  ★ ★ ★ ★ ★  │
+                              └─────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                                  DEPLOYMENT OPTIONS                                     │
+│                                                                                         │
+│  ┌─────────────────────┐              ┌─────────────────────┐                         │
+│  │   DOCKER COMPOSE    │              │    KUBERNETES       │                         │
+│  │                     │              │                     │                         │
+│  │ • Local Development │              │ • Production Scale  │                         │
+│  │ • Quick Setup       │              │ • Auto-scaling      │                         │
+│  │ • Single Host       │              │ • Load Balancing    │                         │
+│  └─────────────────────┘              └─────────────────────┘                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+
+LEGEND:
+═══════
+┌─┐ = System Components
+│ │ = Data Flow Direction
+▼ ▲ = Process Flow
+★   = Your Location (User Interface)
+◄── = "YOU ARE FUCKING HERE" Arrow
+
+NETWORK TYPES CRAWLED:
+• Clearnet (standard web)
+• Tor Network (.onion sites)
+• I2P Network (.i2p sites)
+• Deep Web (advanced crawling)
+
+AI MODELS INTEGRATED:
+• llama3.2-vision:11b (Image Analysis)
+• gemma3:12b (Text Analysis)
+• llama3.1:8b (Content Moderation)
+• MemeCLIP (Meme Detection)

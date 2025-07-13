@@ -1,0 +1,63 @@
+{
+  "project": {
+    "name": "noctipede",
+    "type": "tor_i2p_clearnet_crawler_with_ai",
+    "path": "~/sources/splinter/noctipede",
+    "created": "2025-07-08",
+    "last_session": "2025-07-08"
+  },
+  "static_requirements": {
+    "network_rules": {
+      "clearnet_proxy": "MUST use Tor proxy - NEVER direct clearnet",
+      "simultaneous_crawling": "Tor AND I2P must crawl together",
+      "site_distribution": "Different sites per instance, not same site multiple times"
+    },
+    "api_constraints": {
+      "endpoint_naming": "DO NOT rename existing API endpoints",
+      "service_naming": "DO NOT rename existing Kubernetes services",
+      "readiness_check": "/api/readiness",
+      "dashboard_status": "nearly complete"
+    },
+    "deployment": {
+      "build_command": "make ghcr-deploy",
+      "deploy_sequence": ["make ghcr-deploy", "wait for github", "k8s/destroy.sh", "k8s/deploy.sh"],
+      "file_names_fixed": ["k8s/configmap.yaml", "k8s/deploy.sh", "k8s/destroy.sh"]
+    },
+    "scaling": {
+      "max_instances": 10,
+      "concurrent_ai_analysis": true,
+      "mariadb_safety": "must prevent errors during concurrent operations"
+    },
+    "ai_models": {
+      "source": "k8s/configmap.yaml",
+      "modification_rule": "NEVER change these models"
+    }
+  },
+  "critical_constraints": [
+    "NEVER crawl clearnet directly - always use Tor proxy",
+    "NEVER rename API endpoints",
+    "NEVER rename Kubernetes services",
+    "NEVER change AI models from configmap.yaml",
+    "NEVER rename k8s deployment/destroy scripts",
+    "ALWAYS crawl Tor and I2P simultaneously",
+    "ALWAYS use make ghcr-deploy for image rebuilds",
+    "ALWAYS modify existing deploy/destroy files, never create new ones"
+  ],
+  "session_notes": [
+    {
+      "date": "2025-07-08",
+      "topic": "Initial requirements capture",
+      "decisions": [
+        "Established network crawling rules",
+        "Documented deployment workflow",
+        "Identified API preservation requirements",
+        "Defined scaling and concurrency constraints"
+      ],
+      "next_steps": [
+        "Review existing k8s/configmap.yaml for AI models",
+        "Examine current API endpoints to preserve naming",
+        "Check MariaDB connection handling for concurrent operations"
+      ]
+    }
+  ]
+}
