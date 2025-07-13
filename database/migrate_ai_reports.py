@@ -14,7 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 sys.path.insert(0, '/app')
 
 from database.models import Base, UserQuery, GeneratedReport, QueryTemplate
-from database.connection import get_database_url
+from database.connection import get_db_manager
 from config import get_settings
 
 # Setup logging
@@ -28,7 +28,7 @@ def create_ai_reports_tables():
     try:
         # Get database URL
         settings = get_settings()
-        database_url = get_database_url()
+        database_url = settings.database_url
         
         logger.info(f"Connecting to database...")
         engine = create_engine(database_url)
@@ -77,7 +77,7 @@ def check_existing_tables():
     
     try:
         settings = get_settings()
-        database_url = get_database_url()
+        database_url = settings.database_url
         engine = create_engine(database_url)
         
         with engine.connect() as conn:

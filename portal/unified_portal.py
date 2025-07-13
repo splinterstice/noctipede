@@ -18,6 +18,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import uvicorn
 
+# Import AI Reports router
+try:
+    from api.ai_reports import router as ai_reports_router
+    AI_REPORTS_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: AI Reports not available: {e}")
+    AI_REPORTS_AVAILABLE = False
+
 # Import the cached metrics collector
 from portal.cached_metrics_collector import CachedMetricsCollector
 
@@ -33,6 +41,9 @@ class UnifiedPortal:
         self.metrics_collector = CachedMetricsCollector()
         self.templates = Jinja2Templates(directory="/app/portal/templates")
         
+        # Mount static files
+        self.app.mount("/static", StaticFiles(directory="/app/static"), name="static")
+        
         # Setup routes
         self.setup_routes()
         
@@ -43,6 +54,13 @@ class UnifiedPortal:
     
     def setup_routes(self):
         """Setup FastAPI routes for all dashboard variants"""
+        
+        # Include AI Reports router if available
+        if AI_REPORTS_AVAILABLE:
+            self.app.include_router(ai_reports_router, prefix="/api")
+            print("✅ AI Reports API router included")
+        else:
+            print("⚠️ AI Reports API router not available - using mock endpoints")
         
         @self.app.get("/", response_class=HTMLResponse)
         async def dashboard_selector(request: Request):
@@ -328,89 +346,6 @@ class UnifiedPortal:
                     'error': str(e),
                     'timestamp': datetime.now().isoformat()
                 }, status_code=500)
-        
-        @self.app.post("/api/ai-reports/query")
-        async def ai_query(request: Request):
-            """Process AI query for reports"""
-            try:
-                data = await request.json()
-                query = data.get('query', '').strip()
-                
-                if not query:
-                    return JSONResponse({'error': 'Query is required'}, status_code=400)
-                
-                # For now, return a placeholder response
-                # TODO: Implement actual AI query processing
-                response = {
-                    'query': query,
-                    'response': f"AI analysis for: '{query}' - This feature is under development. The system will analyze crawled data and provide insights based on your query.",
-                    'timestamp': datetime.now().isoformat(),
-                    'status': 'placeholder'
-                }
-                
-                return JSONResponse(response)
-                
-            except Exception as e:
-                logger.error(f"Error processing AI query: {e}")
-                return JSONResponse({'error': str(e)}, status_code=500)
-        
-        @self.app.get("/api/ai-reports/templates")
-        async def ai_templates():
-            """Get AI query templates"""
-            templates = [
-                {
-                    'id': 1,
-                    'title': 'Top I2P Sites Analysis',
-                    'query': 'What are the top I2P sites by page count and what type of content do they contain?',
-                    'category': 'Network Analysis'
-                },
-                {
-                    'id': 2,
-                    'title': 'Tor vs I2P Comparison',
-                    'query': 'Compare the content and activity between Tor and I2P networks',
-                    'category': 'Network Comparison'
-                },
-                {
-                    'id': 3,
-                    'title': 'Recent Crawling Activity',
-                    'query': 'What sites have been crawled in the last 24 hours and what was discovered?',
-                    'category': 'Activity Report'
-                },
-                {
-                    'id': 4,
-                    'title': 'Content Moderation Summary',
-                    'query': 'Provide a summary of content moderation results and flagged content',
-                    'category': 'Content Analysis'
-                },
-                {
-                    'id': 5,
-                    'title': 'Walker.i2p Analysis',
-                    'query': 'Analyze the content and structure of walker.i2p site',
-                    'category': 'Site Analysis'
-                }
-            ]
-            return JSONResponse(templates)
-        
-        @self.app.get("/api/ai-reports/recent")
-        async def recent_queries():
-            """Get recent AI queries"""
-            # For now, return placeholder data
-            # TODO: Implement actual query history storage
-            recent = [
-                {
-                    'id': 1,
-                    'query': 'What are the most active I2P sites?',
-                    'timestamp': datetime.now().isoformat(),
-                    'status': 'completed'
-                },
-                {
-                    'id': 2,
-                    'query': 'Compare Tor and I2P network activity',
-                    'timestamp': datetime.now().isoformat(),
-                    'status': 'completed'
-                }
-            ]
-            return JSONResponse(recent)
         
         @self.app.get("/api/health")
         async def health_check():

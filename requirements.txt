@@ -27,6 +27,10 @@ Pillow>=10.0.0
 pandas>=2.0.0
 pyarrow>=12.0.0
 
+# AI Reports dependencies
+selenium>=4.15.0
+trino>=0.328.0
+
 # System monitoring
 psutil>=5.9.0
 

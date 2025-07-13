@@ -57,7 +57,7 @@ class AIReportsManager {
         try {
             this.showLoading('datasetList');
             
-            const response = await fetch('/api/ai-reports/datasets');
+            const response = await fetch('/ai-reports/datasets');
             const data = await response.json();
             
             if (data.success) {
@@ -139,7 +139,7 @@ class AIReportsManager {
                 auto_partition: true
             };
 
-            const response = await fetch('/api/ai-reports/datasets', {
+            const response = await fetch('/ai-reports/datasets', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData)
@@ -175,7 +175,7 @@ class AIReportsManager {
             this.showLoading('queryResults');
             this.showStatus('queryStatus', 'Executing query...', 'info');
 
-            const response = await fetch('/api/ai-reports/query', {
+            const response = await fetch('/ai-reports/query', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -289,7 +289,7 @@ class AIReportsManager {
 
             this.showLoading('generatedReports');
 
-            const response = await fetch('/api/ai-reports/reports/generate', {
+            const response = await fetch('/ai-reports/reports/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -356,7 +356,7 @@ class AIReportsManager {
 
             this.showLoading('screenshotGallery');
 
-            const response = await fetch('/api/ai-reports/screenshots/batch', {
+            const response = await fetch('/ai-reports/screenshots/batch', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ urls_info: urls })
@@ -387,7 +387,7 @@ class AIReportsManager {
         if (!this.selectedDatasetId) return;
 
         try {
-            const response = await fetch(`/api/ai-reports/screenshots/dataset/${this.selectedDatasetId}`);
+            const response = await fetch(`/ai-reports/screenshots/dataset/${this.selectedDatasetId}`);
             const data = await response.json();
 
             if (data.success) {
@@ -443,7 +443,7 @@ class AIReportsManager {
             // In a real implementation, you'd upload the files and get paths
             const imagePaths = Array.from(files).map(file => `/tmp/${file.name}`);
 
-            const response = await fetch('/api/ai-reports/memeclip/batch-analyze', {
+            const response = await fetch('/ai-reports/memeclip/batch-analyze', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

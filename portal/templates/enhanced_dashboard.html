@@ -385,7 +385,7 @@
                     </div>
                     
                     <ul class="metric-list">
-                        <li><span>CPU Cores</span><span>${data.cpu?.count || 'N/A'}</span></li>
+                        <li><span>CPU Cores</span><span>${data.cpu?.cores || 'N/A'}</span></li>
                         <li><span>Total Memory</span><span>${safeToFixed(data.memory?.total_gb || 0, 1)} GB</span></li>
                         <li><span>Available Memory</span><span>${safeToFixed(data.memory?.available_gb || 0, 1)} GB</span></li>
                         <li><span>Disk Free</span><span>${safeToFixed(data.disk?.free_gb || 0, 1)} GB</span></li>

@@ -79,7 +79,8 @@ class AdvancedAIReports {
         try {
             const response = await fetch('/api/ai-reports/datasets');
             if (response.ok) {
-                this.datasets = await response.json();
+                const data = await response.json();
+                this.datasets = data.datasets || [];
                 this.renderDatasets();
             } else {
                 console.error('Failed to load datasets');
@@ -643,15 +644,15 @@ class AdvancedAIReports {
 }
 
 // Global functions for HTML onclick handlers
-function createDataset() {
+async function createDataset() {
     if (window.aiReports) {
-        window.aiReports.createDataset();
+        await window.aiReports.createDataset();
     }
 }
 
-function executeQuery() {
+async function executeQuery() {
     if (window.aiReports) {
-        window.aiReports.executeQuery();
+        await window.aiReports.executeQuery();
     }
 }
 
@@ -667,9 +668,9 @@ function showQueryHistory() {
     }
 }
 
-function refreshDatasets() {
+async function refreshDatasets() {
     if (window.aiReports) {
-        window.aiReports.loadDatasets();
+        await window.aiReports.loadDatasets();
     }
 }
 
