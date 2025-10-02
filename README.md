@@ -4,7 +4,7 @@ A modular, scalable system for crawling, analyzing, and reporting on deep web co
 
 ## Overview
 
-Noctipede is a comprehensive solution for accessing, storing, and analyzing content from various web sources, including deep web .onion and .i2p sites. The system has been refactored into modular components for better maintainability and scalability.
+Noctipede is a comprehensive solution for accessing, storing, and analyzing content from all across both Tor and I2P,so long as it isn't explicitly illegal (inspired by Darknet Swiss Army Knife). The system has been refactored into modular components for better maintainability and scalability.
 
 ### Key Features
 
