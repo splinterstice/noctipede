@@ -1,4 +1,4 @@
-# Noctipede - Deep Web Analysis System
+# Noctipede - Darknet Analysis System
 
 A modular, scalable system for crawling, analyzing, and reporting on deep web content with advanced AI-powered content moderation capabilities.
 
