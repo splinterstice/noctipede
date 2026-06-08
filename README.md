@@ -295,15 +295,15 @@ noctipede/
 ├── database/       # Database models and management
 ├── storage/        # MinIO integration
 ├── analysis/       # AI analysis modules
-├── api/           # Web API and interfaces
-├── config/        # Configuration management
-└── tests/         # Test suites
+├── api/            # Web API and interfaces
+├── config/         # Configuration management
+└── tests/          # Test suites
 ```
 
 ## License
 
-This project is proprietary and confidential.
+This project is open-source and free to use.
 
-## Support
+## Date Clarification
 
-For support and questions, please contact the development team.
+[This open-source project's development is intended to be continued and subsequently finished as its own standable project on 2027.]
